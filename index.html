@@ -25,6 +25,8 @@
   @keyframes scan { 0%{top:10%} 100%{top:85%} }
   @keyframes fadeSlide { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
   @keyframes pop { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
+  @keyframes sloganIn  { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes sloganOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(-16px)} }
 </style>
 </head>
 <body class="bg-slate-950 text-white overflow-x-hidden">
@@ -50,10 +52,16 @@
     <div class="inline-flex items-center gap-2 pill px-4 py-1.5 rounded-full text-sm font-semibold mb-8 fade-up">
       &#127973; 약국 전용 디지털 키오스크 플랫폼
     </div>
-    <h1 class="text-4xl sm:text-6xl font-black leading-tight mb-6 fade-up" style="animation-delay:.1s">
-      대기 시간을<br/>
-      <span class="text-teal-400">구매 기회</span>로
-    </h1>
+    <div class="relative mb-6 fade-up" style="animation-delay:.1s;height:160px">
+      <h1 id="slogan-a" class="absolute inset-0 flex flex-col items-center justify-center text-4xl sm:text-6xl font-black leading-tight slogan-txt" style="animation:sloganIn 1s ease forwards">
+        대기 시간을<br/>
+        <span class="text-teal-400">구매 기회</span>로
+      </h1>
+      <h1 id="slogan-b" class="absolute inset-0 flex flex-col items-center justify-center text-4xl sm:text-6xl font-black leading-tight slogan-txt" style="opacity:0">
+        좁은 매대를<br/>
+        <span class="text-teal-400">넓게 확장</span>
+      </h1>
+    </div>
     <p class="text-lg sm:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed fade-up" style="animation-delay:.2s">
       처방 대기 중인 환자에게 약사님이 검증한 건강기능식품·의약외품을<br class="hidden sm:block"/>
       디지털 키오스크로 큐레이션하고, 주문까지 받으세요.
@@ -229,6 +237,23 @@
 
 <script>
 /* ── Supabase ── */
+/* 슬로건 페이드 전환 */
+(function() {
+  const slogans = ['slogan-a', 'slogan-b'];
+  let cur = 0;
+  setInterval(() => {
+    const a = document.getElementById(slogans[cur]);
+    const b = document.getElementById(slogans[1 - cur]);
+    if (!a || !b) return;
+    a.style.animation = 'sloganOut .6s ease forwards';
+    setTimeout(() => {
+      a.style.opacity = '0'; a.style.animation = '';
+      b.style.animation = 'sloganIn .6s ease forwards';
+      cur = 1 - cur;
+    }, 600);
+  }, 3200);
+})();
+
 const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
