@@ -4957,43 +4957,6 @@ if (sessionStorage.getItem('pharm_admin_session') === '1') {
 }
 
 // ============================================================
-// 오더팜 PWA - Service Worker 등록 + 웹 푸시 구독
-// ============================================================
-const VAPID_PUBLIC_KEY = 'BBRPDWeO5Ol_AeNdq9Xm75LuGhkMh3d-hqXHr50sHIHiDxBzyIZTAFzq11GiANVum99gomgfev4mSeP7dkuozbY';
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-}
-
-let swRegistration = null;
-
-async function registerSW() {
-  if (!('serviceWorker' in navigator)) return;
-  try {
-    swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
-    console.log('[오더팜] Service Worker 등록 완료');
-    // 관리자 모드일 때만 푸시 구독 요청
-    if (isAdminMode) await subscribePush();
-  } catch(e) {
-    console.warn('[오더팜] SW 등록 실패:', e);
-  }
-}
-
-async function subscribePush() {
-  if (!swRegistration || !('PushManager' in window)) return;
-  try {
-    let sub = await swRegistration.pushManager.getSubscription();
-    if (!sub) {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        console.log('[오더팜] 알림 권한 거부됨');
-        return;
-   
-
-// ============================================================
 // 오더팜 PWA - Service Worker + 웹 푸시
 // ============================================================
 const VAPID_PUBLIC_KEY = 'BBRPDWeO5Ol_AeNdq9Xm75LuGhkMh3d-hqXHr50sHIHiDxBzyIZTAFzq11GiANVum99gomgfev4mSeP7dkuozbY';
