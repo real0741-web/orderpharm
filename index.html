@@ -13,6 +13,7 @@
 <meta name="theme-color" content="#0d9488" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <!-- QR 코드 생성용 라이브러리 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- 바코드 스캔 라이브러리 (크롬·사파리·파이어폭스 모두 지원) -->
@@ -139,6 +140,115 @@
 
 
 <!-- ============ 헤더 ============ -->
+
+<!-- ============ 오더팜 인증 화면 (로그인/가입/대기) ============ -->
+<div id="auth-screen" class="fixed inset-0 z-[200] bg-gradient-to-br from-slate-900 to-teal-900 flex items-center justify-center p-4" style="display:none!important">
+  <div class="w-full max-w-md">
+    <!-- 로고 -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-teal-500 text-white text-3xl font-bold mb-4">℞</div>
+      <div class="text-white text-2xl font-extrabold">오더팜 OrderPharm</div>
+      <div class="text-teal-300 text-sm mt-1">약국 디지털 키오스크 플랫폼</div>
+    </div>
+
+    <!-- 탭 전환 -->
+    <div id="auth-tabs" class="flex bg-white/10 rounded-xl p-1 mb-6">
+      <button onclick="switchAuthTab('login')" id="tab-login"
+        class="flex-1 py-2 rounded-lg text-sm font-bold transition-all text-white bg-teal-500">로그인</button>
+      <button onclick="switchAuthTab('register')" id="tab-register"
+        class="flex-1 py-2 rounded-lg text-sm font-bold transition-all text-white/60">가입 신청</button>
+    </div>
+
+    <!-- 로그인 폼 -->
+    <div id="form-login" class="bg-white rounded-2xl p-6 shadow-2xl">
+      <h2 class="text-lg font-extrabold text-slate-800 mb-4">로그인</h2>
+      <div class="space-y-3">
+        <input id="login-email" type="email" placeholder="이메일" autocomplete="email"
+          class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+        <input id="login-pw" type="password" placeholder="비밀번호" autocomplete="current-password"
+          class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+        <div id="login-error" class="text-red-500 text-xs hidden"></div>
+        <button onclick="doLogin()" id="login-btn"
+          class="w-full py-3 bg-teal-500 text-white font-bold rounded-xl hover:bg-teal-600 transition-colors">
+          로그인
+        </button>
+      </div>
+      <p class="text-center text-xs text-slate-400 mt-4">계정이 없으신가요?
+        <button onclick="switchAuthTab('register')" class="text-teal-600 font-semibold">가입 신청</button>
+      </p>
+    </div>
+
+    <!-- 가입 신청 폼 -->
+    <div id="form-register" class="bg-white rounded-2xl p-6 shadow-2xl hidden">
+      <h2 class="text-lg font-extrabold text-slate-800 mb-1">가입 신청</h2>
+      <p class="text-xs text-slate-500 mb-4">약국 개설 정보를 입력하시면 관리자 검토 후 승인해드립니다.</p>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input id="reg-email" type="email" placeholder="이메일 *" autocomplete="email"
+            class="col-span-2 w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+          <input id="reg-pw" type="password" placeholder="비밀번호 (8자↑) *"
+            class="col-span-2 w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+        </div>
+        <div class="border-t border-slate-100 pt-3">
+          <p class="text-xs font-bold text-slate-500 mb-2">📋 약국 개설 정보</p>
+          <div class="space-y-3">
+            <input id="reg-pharmacy" type="text" placeholder="약국 상호명 * (예: 우리약국)"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+            <input id="reg-biznum" type="text" placeholder="사업자등록번호 * (000-00-00000)"
+              maxlength="12"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400"
+              oninput="formatBizNum(this)" />
+            <div class="grid grid-cols-2 gap-3">
+              <input id="reg-owner" type="text" placeholder="대표자 성명 *"
+                class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+              <input id="reg-birth" type="text" placeholder="생년월일 * (19800101)"
+                maxlength="8"
+                class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400" />
+            </div>
+            <input id="reg-phone" type="tel" placeholder="연락처 * (010-0000-0000)"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-teal-400"
+              oninput="formatPhone(this)" />
+          </div>
+        </div>
+        <div id="reg-error" class="text-red-500 text-xs hidden"></div>
+        <button onclick="doRegister()" id="register-btn"
+          class="w-full py-3 bg-teal-500 text-white font-bold rounded-xl hover:bg-teal-600 transition-colors">
+          가입 신청하기
+        </button>
+      </div>
+      <p class="text-center text-xs text-slate-400 mt-4">이미 계정이 있으신가요?
+        <button onclick="switchAuthTab('login')" class="text-teal-600 font-semibold">로그인</button>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- 승인 대기 화면 -->
+<div id="pending-screen" class="fixed inset-0 z-[200] bg-gradient-to-br from-slate-900 to-teal-900 flex items-center justify-center p-4" style="display:none!important">
+  <div class="w-full max-w-sm text-center">
+    <div class="text-6xl mb-6">⏳</div>
+    <div class="text-white text-xl font-extrabold mb-2">승인 대기 중</div>
+    <div class="text-teal-300 text-sm mb-6" id="pending-name"></div>
+    <div class="bg-white/10 rounded-2xl p-6 text-white/80 text-sm leading-relaxed">
+      가입 신청이 접수됐습니다.<br/>
+      관리자 검토 후 승인되면<br/>
+      이메일로 안내드립니다.
+    </div>
+    <button onclick="doLogout()" class="mt-6 text-teal-300 text-sm underline">로그아웃</button>
+  </div>
+</div>
+
+<!-- 거절 화면 -->
+<div id="rejected-screen" class="fixed inset-0 z-[200] bg-gradient-to-br from-slate-900 to-red-900 flex items-center justify-center p-4" style="display:none!important">
+  <div class="w-full max-w-sm text-center">
+    <div class="text-6xl mb-6">❌</div>
+    <div class="text-white text-xl font-extrabold mb-2">가입이 거절됐습니다</div>
+    <div class="bg-white/10 rounded-2xl p-4 text-white/80 text-sm mt-4" id="rejected-reason"></div>
+    <p class="text-white/60 text-xs mt-4">문의: 오더팜 관리자에게 연락해주세요</p>
+    <button onclick="doLogout()" class="mt-4 text-red-300 text-sm underline">로그아웃</button>
+  </div>
+</div>
+
 <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
@@ -1330,8 +1440,12 @@ const DEFAULT_DATA = {
   ],
 };
 
-const STORAGE_KEY = 'pharm_warehouse_data_v1';
-const SHOP_ID = 'shop1'; // 우리약국 (오더팜 1호점)
+const STORAGE_KEY_BASE = 'pharm_warehouse_data_v1';
+function getStorageKey() { return STORAGE_KEY_BASE + '_' + getShopId(); }
+const STORAGE_KEY = STORAGE_KEY_BASE; // 하위호환
+const SHOP_ID = 'shop1'; // 기본값 (로그인 후 window._DYNAMIC_SHOP_ID로 자동 교체)
+// 실제 사용 시 항상 이 함수를 통해 shopId 가져오기
+function getShopId() { return window._DYNAMIC_SHOP_ID || SHOP_ID; }
 
 /* 데이터 로드/저장 */
 function loadData() {
@@ -1355,7 +1469,7 @@ function saveData() {
   data._savedAt = Date.now(); // 저장 시각 기록 (덮어쓰기 방지용)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   // Cloudflare KV에 백그라운드 동기화 (1호점 고정)
-  fetch(`${PROXY}/?action=saveData&shopId=${SHOP_ID}`, {
+  fetch(`${PROXY}/?action=saveData&shopId=${getShopId()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
@@ -4780,7 +4894,7 @@ function importData(e) {
 async function syncFromRemote() {
   showToast('☁️ 원격에서 불러오는 중...');
   try {
-    const res = await fetch(`${PROXY}/?action=getData&shopId=${SHOP_ID}`, { cache: 'no-store' });
+    const res = await fetch(`${PROXY}/?action=getData&shopId=${getShopId()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const remote = await res.json();
     if (!remote || remote.error) throw new Error('서버에 저장된 데이터가 없습니다');
@@ -4862,7 +4976,7 @@ function _applyPending() {
 
 async function _applyRemoteData(showToastMsg, bgMode = false) {
   try {
-    const res = await fetch(`${PROXY}/?action=getData&shopId=${SHOP_ID}`, {
+    const res = await fetch(`${PROXY}/?action=getData&shopId=${getShopId()}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(8000),
     });
@@ -4894,7 +5008,7 @@ async function _applyRemoteData(showToastMsg, bgMode = false) {
   let _lastVersion = data._savedAt || 0;
   setInterval(async () => {
     try {
-      const r = await fetch(`${PROXY}/?action=getVersion&shopId=${SHOP_ID}`, {
+      const r = await fetch(`${PROXY}/?action=getVersion&shopId=${getShopId()}`, {
         cache: 'no-store', signal: AbortSignal.timeout(5000),
       });
       if (!r.ok) return;
@@ -4925,7 +5039,7 @@ async function _applyRemoteData(showToastMsg, bgMode = false) {
 
   // 서버에서 항상 최신 데이터 가져오기 (1호점 고정)
   try {
-    const res = await fetch(`${PROXY}/?action=getData&shopId=${SHOP_ID}`, {
+    const res = await fetch(`${PROXY}/?action=getData&shopId=${getShopId()}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(10000),
     });
@@ -4954,6 +5068,204 @@ if (sessionStorage.getItem('pharm_admin_session') === '1') {
 } else if (_adminUrlMode) {
   // ?mode=admin 또는 #admin → PIN 입력창 자동 오픈
   openAdminLogin();
+}
+
+
+// ============================================================
+// 오더팜 Auth - Supabase 인증 + 회원 가입/승인
+// ============================================================
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let currentUser = null;
+let currentProfile = null;
+
+// ── 화면 전환 헬퍼 ──────────────────────────────────────────
+function showAuthScreen(name) {
+  ['auth-screen','pending-screen','rejected-screen'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.cssText = id === name ? '' : 'display:none!important';
+  });
+  // 메인 앱 화면
+  const mainEls = ['app-header','main-kiosk','init-loading-screen'];
+  // header와 main은 auth가 없을 때만 표시
+  document.querySelectorAll('header,main,section,#init-loading-screen').forEach(el => {
+    if (!el.closest('#auth-screen,#pending-screen,#rejected-screen')) {
+      el.style.display = name ? 'none' : '';
+    }
+  });
+}
+
+// ── 탭 전환 ──────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.getElementById('form-login').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('form-register').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('tab-login').className = 'flex-1 py-2 rounded-lg text-sm font-bold transition-all ' +
+    (tab === 'login' ? 'text-white bg-teal-500' : 'text-white/60');
+  document.getElementById('tab-register').className = 'flex-1 py-2 rounded-lg text-sm font-bold transition-all ' +
+    (tab === 'register' ? 'text-white bg-teal-500' : 'text-white/60');
+}
+
+// ── 사업자번호 자동 포맷 ─────────────────────────────────────
+function formatBizNum(el) {
+  let v = el.value.replace(/\D/g,'');
+  if (v.length > 3) v = v.slice(0,3) + '-' + v.slice(3);
+  if (v.length > 6) v = v.slice(0,6) + '-' + v.slice(6);
+  el.value = v.slice(0,12);
+}
+
+function formatPhone(el) {
+  let v = el.value.replace(/\D/g,'');
+  if (v.length > 3) v = v.slice(0,3) + '-' + v.slice(3);
+  if (v.length > 7) v = v.slice(0,7) + '-' + v.slice(7);
+  el.value = v.slice(0,13);
+}
+
+// ── 로그인 ───────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pw    = document.getElementById('login-pw').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('login-btn');
+  errEl.classList.add('hidden');
+  btn.textContent = '로그인 중...'; btn.disabled = true;
+
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  btn.textContent = '로그인'; btn.disabled = false;
+  if (error) {
+    errEl.textContent = '이메일 또는 비밀번호가 틀렸습니다.';
+    errEl.classList.remove('hidden');
+  }
+  // 성공 시 onAuthStateChange가 자동으로 처리
+}
+
+// ── 가입 신청 ─────────────────────────────────────────────────
+async function doRegister() {
+  const email    = document.getElementById('reg-email').value.trim();
+  const pw       = document.getElementById('reg-pw').value;
+  const pharmacy = document.getElementById('reg-pharmacy').value.trim();
+  const biznum   = document.getElementById('reg-biznum').value.trim();
+  const owner    = document.getElementById('reg-owner').value.trim();
+  const birth    = document.getElementById('reg-birth').value.trim();
+  const phone    = document.getElementById('reg-phone').value.trim();
+  const errEl    = document.getElementById('reg-error');
+  const btn      = document.getElementById('register-btn');
+  errEl.classList.add('hidden');
+
+  // 검증
+  if (!email || !pw || !pharmacy || !biznum || !owner || !birth || !phone) {
+    errEl.textContent = '모든 항목을 입력해주세요.'; errEl.classList.remove('hidden'); return;
+  }
+  if (pw.length < 8) {
+    errEl.textContent = '비밀번호는 8자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return;
+  }
+  if (!/^\d{3}-\d{2}-\d{5}$/.test(biznum)) {
+    errEl.textContent = '사업자등록번호 형식을 확인해주세요. (000-00-00000)'; errEl.classList.remove('hidden'); return;
+  }
+  if (!/^\d{8}$/.test(birth)) {
+    errEl.textContent = '생년월일은 숫자 8자리로 입력해주세요. (예: 19800101)'; errEl.classList.remove('hidden'); return;
+  }
+
+  btn.textContent = '신청 중...'; btn.disabled = true;
+
+  // Supabase Auth 가입
+  const { data, error } = await sb.auth.signUp({ email, password: pw });
+  if (error) {
+    errEl.textContent = error.message.includes('already') ? '이미 가입된 이메일입니다.' : error.message;
+    errEl.classList.remove('hidden'); btn.textContent = '가입 신청하기'; btn.disabled = false; return;
+  }
+
+  // profiles 테이블에 가입 정보 저장
+  const { error: profErr } = await sb.from('profiles').insert({
+    id: data.user.id, email,
+    pharmacy_name: pharmacy, business_number: biznum,
+    owner_name: owner, owner_birth: birth, phone,
+    status: 'pending'
+  });
+
+  btn.textContent = '가입 신청하기'; btn.disabled = false;
+  if (profErr) {
+    errEl.textContent = '정보 저장 실패: ' + profErr.message; errEl.classList.remove('hidden'); return;
+  }
+
+  // 성공 → 대기 화면으로
+  currentProfile = { pharmacy_name: pharmacy, status: 'pending' };
+  document.getElementById('pending-name').textContent = pharmacy + ' · ' + owner + ' 대표';
+  showAuthScreen('pending-screen');
+}
+
+// ── 로그아웃 ─────────────────────────────────────────────────
+async function doLogout() {
+  await sb.auth.signOut();
+  currentUser = null; currentProfile = null;
+  showAuthScreen('auth-screen');
+}
+
+// ── 인증 상태 변경 감지 ──────────────────────────────────────
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (!session) {
+    // 미로그인 → 로그인 화면
+    showAuthScreen('auth-screen');
+    return;
+  }
+
+  currentUser = session.user;
+
+  // profiles 조회
+  const { data: profile } = await sb.from('profiles')
+    .select('*').eq('id', currentUser.id).single();
+
+  currentProfile = profile;
+
+  if (!profile) {
+    // 프로필 없음 (이상 케이스) → 로그인 화면
+    showAuthScreen('auth-screen');
+    return;
+  }
+
+  if (profile.status === 'pending') {
+    document.getElementById('pending-name').textContent =
+      profile.pharmacy_name + ' · ' + profile.owner_name + ' 대표';
+    showAuthScreen('pending-screen');
+    return;
+  }
+
+  if (profile.status === 'rejected') {
+    const reasonEl = document.getElementById('rejected-reason');
+    if (reasonEl) reasonEl.textContent = profile.rejection_reason || '거절 사유가 입력되지 않았습니다.';
+    showAuthScreen('rejected-screen');
+    return;
+  }
+
+  if (profile.status === 'approved' && profile.shop_id) {
+    // ✅ 승인됨 → 키오스크 구동
+    // SHOP_ID를 이 프로필의 shop_id로 동적 설정
+    window._DYNAMIC_SHOP_ID = profile.shop_id;
+    showAuthScreen(null);  // 인증 화면 모두 숨김, 메인 앱 표시
+
+    // 헤더 약국명 업데이트
+    const nameEl = document.getElementById('header-name');
+    if (nameEl) nameEl.textContent = profile.pharmacy_name;
+
+    // 해당 shop_id로 데이터 로드
+    if (typeof _reloadForShop === 'function') _reloadForShop(profile.shop_id);
+    return;
+  }
+
+  // 그 외 → 대기 화면
+  showAuthScreen('pending-screen');
+});
+
+// ── shop_id 동적 적용 ─────────────────────────────────────────
+function _reloadForShop(shopId) {
+  // 전역 SHOP_ID를 동적으로 교체
+  // (SHOP_ID const는 변경 불가이므로 fetch 시 동적 값 사용)
+  window._DYNAMIC_SHOP_ID = shopId;
+  // 데이터 다시 로드
+  if (typeof _applyRemoteData === 'function') {
+    _applyRemoteData(false);
+  }
 }
 
 // ============================================================
@@ -4990,7 +5302,7 @@ async function subscribePush() {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
     }
-    await fetch(`${PROXY}/?action=savePushSub&shopId=${SHOP_ID}`, {
+    await fetch(`${PROXY}/?action=savePushSub&shopId=${getShopId()}`, {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(sub)
     });
     showToast('🔔 주문 알림이 활성화됐습니다!');
@@ -5003,7 +5315,7 @@ async function unsubscribePush() {
   const sub = await swRegistration.pushManager.getSubscription();
   if (sub) {
     await sub.unsubscribe();
-    await fetch(`${PROXY}/?action=removePushSub&shopId=${SHOP_ID}`, {
+    await fetch(`${PROXY}/?action=removePushSub&shopId=${getShopId()}`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ endpoint: sub.endpoint })
     });
@@ -5016,7 +5328,7 @@ async function testPushNotification() {
   if (!swRegistration) { showToast('❌ 먼저 알림을 켜주세요'); return; }
   const sub = await swRegistration.pushManager.getSubscription();
   if (!sub) { showToast('❌ 알림이 꺼져 있습니다.'); return; }
-  const res = await fetch(`${PROXY}/?action=testPush&shopId=${SHOP_ID}`, {
+  const res = await fetch(`${PROXY}/?action=testPush&shopId=${getShopId()}`, {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ subscription: sub })
   });
   showToast(res.ok ? '🔔 테스트 알림을 보냈습니다!' : '❌ 테스트 실패');

@@ -336,6 +336,35 @@
       <h1 class="text-xl font-extrabold text-slate-800">⚙️ 관리자 설정</h1>
     </div>
 
+
+    <!-- 회원 관리 (전체 관리자 전용) -->
+    <div id="members-section" class="bg-white rounded-2xl border border-amber-200 shadow-sm p-5 mb-4 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-extrabold text-slate-700 flex items-center gap-2">
+          👥 약국 회원 관리
+          <span id="pending-count-badge" class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full hidden">0</span>
+        </h2>
+        <button onclick="loadMembers()" class="text-xs text-teal-600 hover:underline">새로고침</button>
+      </div>
+
+      <!-- 탭 -->
+      <div class="flex gap-2 mb-4 border-b border-slate-100 pb-2">
+        <button onclick="filterMembers('pending')" id="mtab-pending"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-700">⏳ 대기</button>
+        <button onclick="filterMembers('approved')" id="mtab-approved"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100">✅ 승인</button>
+        <button onclick="filterMembers('rejected')" id="mtab-rejected"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100">❌ 거절</button>
+        <button onclick="filterMembers('all')" id="mtab-all"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100">전체</button>
+      </div>
+
+      <!-- 회원 목록 -->
+      <div id="members-list" class="space-y-3">
+        <div class="text-center text-slate-400 text-sm py-8">로딩 중...</div>
+      </div>
+    </div>
+
     <!-- 식약처 API 키 -->
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
       <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🔍 식약처 공공데이터 API 키</h2>
@@ -2430,6 +2459,13 @@ function updateHeaderAuth() {
         noticeMsg.textContent = '관리자 기능이 활성화됐습니다.';
       }
       noticebar.classList.remove('hidden');
+
+  // 전체관리자 모드: 회원 관리 섹션 표시 및 데이터 로드
+  const membersSection = document.getElementById('members-section');
+  if (membersSection) {
+    membersSection.classList.toggle('hidden', !isAdminMode);
+    if (isAdminMode && typeof loadMembers === 'function') loadMembers();
+  }
     }
   } else {
     if (adminBadge) adminBadge.classList.add('hidden');
@@ -4416,6 +4452,142 @@ document.addEventListener('DOMContentLoaded', function() {
   _updateSelectLabel();
 });
 
+
+// ============================================================
+// 오더팜 회원 관리 (전체 관리자 전용)
+// ============================================================
+let _allMembers = [];
+let _memberFilter = 'pending';
+
+async function loadMembers() {
+  const listEl = document.getElementById('members-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="text-center text-slate-400 text-sm py-8">불러오는 중...</div>';
+
+  // service_role이 아닌 anon key로는 다른 유저 데이터 못 읽음
+  // → super admin은 board_settings의 service_role 키를 따로 설정하거나
+  //   Supabase 대시보드에서 RLS 정책으로 관리자 접근 허용
+  // 임시: RLS를 bypass하는 별도 함수 또는 Worker 경유
+  try {
+    const res = await fetch(`${PROXY}/?action=getMembers`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Worker 응답 오류');
+    _allMembers = await res.json();
+  } catch(e) {
+    // Worker에 getMembers 없으면 직접 Supabase 시도 (RLS 허용 시)
+    const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+    if (error) {
+      listEl.innerHTML = '<div class="text-center text-red-400 text-sm py-8">⚠️ 불러오기 실패: ' + error.message + '</div>';
+      return;
+    }
+    _allMembers = data || [];
+  }
+
+  // 대기 수 배지
+  const pendingCount = _allMembers.filter(m => m.status === 'pending').length;
+  const badge = document.getElementById('pending-count-badge');
+  if (badge) {
+    badge.textContent = pendingCount;
+    badge.classList.toggle('hidden', pendingCount === 0);
+  }
+
+  renderMembers();
+}
+
+function filterMembers(status) {
+  _memberFilter = status;
+  ['pending','approved','rejected','all'].forEach(s => {
+    const btn = document.getElementById('mtab-' + s);
+    if (btn) btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold ' +
+      (s === status ? (s === 'pending' ? 'bg-amber-100 text-amber-700' : s === 'approved' ? 'bg-teal-100 text-teal-700' : s === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700') : 'text-slate-500 hover:bg-slate-100');
+  });
+  renderMembers();
+}
+
+function renderMembers() {
+  const listEl = document.getElementById('members-list');
+  if (!listEl) return;
+  const list = _memberFilter === 'all' ? _allMembers : _allMembers.filter(m => m.status === _memberFilter);
+
+  if (!list.length) {
+    listEl.innerHTML = '<div class="text-center text-slate-400 text-sm py-8">해당 상태의 회원이 없습니다.</div>';
+    return;
+  }
+
+  listEl.innerHTML = list.map(m => `
+    <div class="border border-slate-100 rounded-xl p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-bold text-slate-800 text-sm">${m.pharmacy_name}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${
+              m.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+              m.status === 'approved' ? 'bg-teal-100 text-teal-700' :
+              m.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
+            }">${m.status === 'pending' ? '⏳ 대기' : m.status === 'approved' ? '✅ 승인' : m.status === 'rejected' ? '❌ 거절' : m.status}</span>
+          </div>
+          <div class="text-xs text-slate-500 space-y-0.5">
+            <div>👤 ${m.owner_name} · 📅 ${m.owner_birth || '-'}</div>
+            <div>🏢 ${m.business_number || '-'}</div>
+            <div>📧 ${m.email} · 📞 ${m.phone || '-'}</div>
+            ${m.shop_id ? `<div class="text-teal-600 font-mono">🔑 ${m.shop_id}</div>` : ''}
+            ${m.rejection_reason ? `<div class="text-red-500">거절 사유: ${m.rejection_reason}</div>` : ''}
+            <div class="text-slate-400">신청일: ${new Date(m.created_at).toLocaleDateString('ko-KR')}</div>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 shrink-0">
+          ${m.status === 'pending' ? `
+            <button onclick="approveMember('${m.id}','${m.business_number}','${m.pharmacy_name}')"
+              class="px-3 py-1.5 bg-teal-500 text-white text-xs font-bold rounded-lg hover:bg-teal-600">✅ 승인</button>
+            <button onclick="rejectMember('${m.id}')"
+              class="px-3 py-1.5 bg-red-100 text-red-600 text-xs font-bold rounded-lg hover:bg-red-200">❌ 거절</button>
+          ` : m.status === 'approved' ? `
+            <button onclick="suspendMember('${m.id}')"
+              class="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg hover:bg-slate-200">정지</button>
+          ` : `
+            <button onclick="approveMember('${m.id}','${m.business_number}','${m.pharmacy_name}')"
+              class="px-3 py-1.5 bg-teal-100 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-200">재승인</button>
+          `}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function approveMember(userId, bizNum, pharmacyName) {
+  if (!confirm(`"${pharmacyName}" 약국을 승인하시겠어요?`)) return;
+  const shopId = 'shop_' + bizNum.replace(/-/g,'');
+  const { error } = await sb.from('profiles').update({
+    status: 'approved',
+    shop_id: shopId,
+    approved_at: new Date().toISOString()
+  }).eq('id', userId);
+  if (error) { showToast('❌ 승인 실패: ' + error.message); return; }
+  showToast(`✅ 승인 완료! shop_id: ${shopId}`);
+  loadMembers();
+}
+
+async function rejectMember(userId) {
+  const reason = prompt('거절 사유를 입력하세요:');
+  if (reason === null) return;
+  const { error } = await sb.from('profiles').update({
+    status: 'rejected',
+    rejection_reason: reason || '관리자 검토 결과 승인이 어렵습니다.'
+  }).eq('id', userId);
+  if (error) { showToast('❌ 거절 처리 실패: ' + error.message); return; }
+  showToast('거절 처리 완료');
+  loadMembers();
+}
+
+async function suspendMember(userId) {
+  if (!confirm('이 회원을 정지하시겠어요? 해당 약국 접속이 차단됩니다.')) return;
+  const { error } = await sb.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+  if (error) { showToast('❌ 실패: ' + error.message); return; }
+  showToast('정지 처리 완료');
+  loadMembers();
+}
+
+// 관리자 모드 진입 시 회원 관리 섹션 표시 + 자동 로드
+const _origUpdateHeaderAuth = typeof updateHeaderAuth === 'function' ? updateHeaderAuth : null;
 </script>
 </body>
 </html>
