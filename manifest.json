@@ -1,7 +1,7 @@
 {
   "name": "오더팜 OrderPharm",
   "short_name": "오더팜",
-  "description": "약국 디지털 키오스크 & 주문 관리 플랫폼",
+  "description": "약국 디지털 키오스크 플랫폼",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -11,26 +11,18 @@
   "lang": "ko",
   "categories": ["medical", "business"],
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "screenshots": [],
   "shortcuts": [
     {
-      "name": "관리자 모드",
-      "short_name": "관리자",
-      "description": "관리자 모드로 바로 열기",
-      "url": "./index.html?mode=admin",
+      "name": "키오스크 앱",
+      "url": "./app.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "약품 게시판",
+      "url": "./board.html",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
