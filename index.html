@@ -327,24 +327,41 @@ function fmtPhone(el) {
 async function doLogin() {
   const email=document.getElementById('l-email').value.trim(), pw=document.getElementById('l-pw').value;
   const errEl=document.getElementById('l-error'); errEl.classList.add('hidden');
-  const {error}=await sb.auth.signInWithPassword({email,password:pw});
-  if(error){errEl.textContent='이메일 또는 비밀번호가 틀렸습니다.';errEl.classList.remove('hidden');return;}
-  const {data:{user}}=await sb.auth.getUser();
-  const {data:p}=await sb.from('profiles').select('shop_id,status').eq('id',user.id).single();
-  if(p?.status==='approved'&&p?.shop_id){
-    _approvedShopId=p.shop_id;
-    closeModal();
-    document.getElementById('header-btns').classList.add('hidden');
-    const loggedEl=document.getElementById('header-logged');
-    loggedEl.classList.remove('hidden');
-    loggedEl.classList.add('flex');
-    document.getElementById('header-pharmacy-name').textContent=p.pharmacy_name||p.shop_id;
-    // 로그인 직후엔 바로 키오스크로 이동
-    goKiosk();
+  const btn=document.querySelector('#panel-login button');
+  btn.textContent='로그인 중...'; btn.disabled=true;
+
+  try {
+    const {error}=await sb.auth.signInWithPassword({email,password:pw});
+    if(error){
+      errEl.textContent='이메일 또는 비밀번호가 틀렸습니다.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    const {data:{user}}=await sb.auth.getUser();
+    const {data:p, error:pe}=await sb.from('profiles').select('shop_id,status,pharmacy_name').eq('id',user.id).single();
+    if(pe||!p){
+      errEl.textContent='계정 정보를 불러올 수 없습니다. ('+((pe?.message)||'데이터 없음')+')';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if(p.status==='approved'&&p.shop_id){
+      location.href='./dashboard.html';
+    } else if(p.status==='pending'){
+      showDone('가입 신청이 검토 중입니다.<br/>승인 후 이용 가능합니다.');
+      closeModal();
+    } else if(p.status==='rejected'){
+      errEl.textContent='가입이 거절됐습니다. 관리자에게 문의하세요.';
+      errEl.classList.remove('hidden');
+    } else {
+      errEl.textContent='계정 상태 이상: '+p.status;
+      errEl.classList.remove('hidden');
+    }
+  } catch(e) {
+    errEl.textContent='오류: '+e.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.textContent='로그인'; btn.disabled=false;
   }
-  else if(p?.status==='pending'){showDone('가입 신청이 검토 중입니다.<br/>승인 후 이용 가능합니다.');closeModal();}
-  else if(p?.status==='rejected'){errEl.textContent='가입이 거절됐습니다. 관리자에게 문의하세요.';errEl.classList.remove('hidden');}
-  else{errEl.textContent='계정 상태를 확인할 수 없습니다.';errEl.classList.remove('hidden');}
 }
 
 /* ── 가입 신청 ── */
