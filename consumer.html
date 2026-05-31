@@ -451,7 +451,10 @@ html, body {
 const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const NAVER_READY = typeof naver !== 'undefined' && naver.maps;
+// 네이버 지도 로드 여부 — 함수 호출 시점에 체크 (타이밍 이슈 방지)
+function isNaverReady() {
+  return typeof naver !== 'undefined' && naver.maps && typeof naver.maps.Map === 'function';
+}
 
 // 상태
 let _map = null, _mapMarkers = [], _myLat = null, _myLng = null;
@@ -589,7 +592,7 @@ function showOnMap(idx) {
 
 // ── 지도 초기화 ──
 function initNaverMap() {
-  if (!NAVER_READY) {
+  if (!isNaverReady()) {
     document.getElementById('naver-map').style.display = 'none';
     document.getElementById('map-no-key').style.display = 'flex';
     return;
