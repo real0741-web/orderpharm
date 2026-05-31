@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>오더팜 — 내 주변 약국 찾기</title>
+<meta name="description" content="찾는 약이 어느 약국에 있는지 바로 확인하세요"/>
+<link rel="manifest" href="./manifest.json"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="오더팜"/>
+<meta name="theme-color" content="#0d9488"/>
+<link rel="apple-touch-icon" href="./icons/icon-192.png"/>
+<!-- 네이버 지도 API (클라이언트 ID 교체 필요) -->
+<script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=y7t7e0vvnk&submodules=geocoder"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  background: #f8fafc; color: #0f172a;
+}
+:root {
+  --brand: #0d9488; --brand-dark: #0f766e; --brand-soft: #f0fdfa;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── 전체 레이아웃 ── */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#screen { flex: 1; overflow: hidden; position: relative; }
+
+/* ── 바텀 탭 ── */
+#tab-bar {
+  display: flex; background: white; border-top: 1px solid #e2e8f0;
+  padding-bottom: calc(8px + var(--safe-bottom));
+  box-shadow: 0 -4px 20px rgba(0,0,0,.06);
+}
+.tab-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 10px 4px 6px; border: none; background: none; cursor: pointer;
+  color: #94a3b8; font-size: 10px; font-weight: 700; transition: color .15s;
+}
+.tab-btn.active { color: var(--brand); }
+.tab-btn svg { width: 22px; height: 22px; }
+
+/* ── 화면 전환 ── */
+.screen { position: absolute; inset: 0; overflow-y: auto; background: #f8fafc; display: none; }
+.screen.active { display: block; }
+#screen-map.active { display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 홈 화면 ── */
+.home-header {
+  background: linear-gradient(135deg, #0f172a 0%, #134e4a 100%);
+  padding: 20px 20px 28px; color: white;
+}
+.home-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.home-logo-icon {
+  width: 36px; height: 36px; background: var(--brand); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 900; color: white;
+}
+.home-logo span { font-size: 18px; font-weight: 900; }
+.home-logo small { font-size: 12px; color: rgba(255,255,255,.5); }
+.home-headline { font-size: 22px; font-weight: 900; line-height: 1.3; margin-bottom: 6px; }
+.home-sub { font-size: 13px; color: rgba(255,255,255,.65); }
+
+/* 검색창 (홈) */
+.search-box {
+  margin: -18px 16px 0; position: relative; z-index: 2;
+  background: white; border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+.search-box-inner {
+  display: flex; align-items: center; gap: 10px;
+  background: #f1f5f9; border-radius: 12px; padding: 10px 14px;
+  border: 2px solid transparent; transition: border-color .15s, background .15s;
+}
+.search-box-inner:focus-within { background: white; border-color: var(--brand); }
+.search-box-inner input {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 15px; font-family: inherit; color: #0f172a;
+}
+.search-box-inner input::placeholder { color: #94a3b8; }
+.search-btn {
+  width: 36px; height: 36px; background: var(--brand); border: none; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; shrink-0: 0;
+  transition: background .15s;
+}
+.search-btn:active { background: var(--brand-dark); }
+.chips-row {
+  display: flex; gap: 7px; margin-top: 11px; overflow-x: auto; padding-bottom: 2px;
+}
+.chips-row::-webkit-scrollbar { display: none; }
+.chip-btn {
+  shrink: 0; white-space: nowrap; padding: 6px 12px; border-radius: 20px;
+  border: 1.5px solid #e2e8f0; background: white; font-size: 12px; font-weight: 700;
+  color: #475569; cursor: pointer; transition: all .15s; flex-shrink: 0;
+}
+.chip-btn:active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+
+/* 섹션 */
+.section { padding: 20px 16px 8px; }
+.section-title { font-size: 16px; font-weight: 900; color: #0f172a; margin-bottom: 12px; }
+.section-title span { color: var(--brand); }
+
+/* 근처 약국 카드 (홈) */
+.pharm-card {
+  background: white; border: 1.5px solid #e2e8f0; border-radius: 16px;
+  padding: 16px; margin-bottom: 10px; cursor: pointer; transition: all .15s;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.pharm-card:active { border-color: var(--brand); background: var(--brand-soft); }
+.pharm-icon {
+  width: 44px; height: 44px; background: var(--brand-soft); border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.pharm-name { font-size: 15px; font-weight: 900; color: #0f172a; }
+.pharm-addr { font-size: 12px; color: #64748b; margin-top: 2px; }
+.pharm-meta { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 8px; border-radius: 8px; font-size: 11px; font-weight: 700;
+}
+.badge-open { background: #dcfce7; color: #16a34a; }
+.badge-closed { background: #fee2e2; color: #dc2626; }
+.badge-dist { background: #f1f5f9; color: #64748b; }
+.badge-count { background: var(--brand-soft); color: var(--brand); }
+.pharm-action { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid #e2e8f0;
+  background: white; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; transition: all .15s;
+}
+.icon-btn:active { background: var(--brand-soft); border-color: var(--brand); }
+
+/* ── 검색 결과 화면 ── */
+.result-header {
+  background: white; border-bottom: 1px solid #e2e8f0;
+  padding: 12px 16px; position: sticky; top: 0; z-index: 10;
+}
+.result-back {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 700; color: #475569; cursor: pointer;
+  margin-bottom: 10px;
+}
+.result-search-bar {
+  display: flex; align-items: center; gap: 8px;
+  background: #f1f5f9; border-radius: 12px; padding: 10px 14px;
+  border: 2px solid transparent;
+}
+.result-search-bar:focus-within { background: white; border-color: var(--brand); }
+.result-search-bar input {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 15px; font-family: inherit;
+}
+.result-count {
+  padding: 10px 16px; font-size: 13px; color: #64748b; font-weight: 600;
+  border-bottom: 1px solid #f1f5f9;
+}
+.result-count strong { color: var(--brand); }
+
+/* 결과 카드 */
+.result-card {
+  background: white; margin: 0 16px 10px; border-radius: 16px;
+  border: 1.5px solid #e2e8f0; overflow: hidden; cursor: pointer; transition: all .15s;
+}
+.result-card:first-of-type { margin-top: 12px; }
+.result-card:active { border-color: var(--brand); }
+.result-card-top { padding: 14px 16px; display: flex; align-items: flex-start; gap: 10px; }
+.result-num {
+  width: 28px; height: 28px; background: var(--brand); color: white;
+  border-radius: 8px; font-size: 12px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.result-drugs {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 0 16px 14px;
+}
+.drug-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--brand-soft); color: var(--brand-dark);
+  border: 1px solid #99f6e4; border-radius: 8px; padding: 4px 10px;
+  font-size: 12px; font-weight: 700;
+}
+.drug-price { color: #64748b; font-weight: 600; }
+.result-actions { display: flex; border-top: 1px solid #f1f5f9; }
+.result-action-btn {
+  flex: 1; padding: 11px; border: none; background: none; font-size: 12px;
+  font-weight: 700; color: #475569; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; gap: 4px; transition: background .15s;
+}
+.result-action-btn:active { background: #f8fafc; }
+.result-action-btn + .result-action-btn { border-left: 1px solid #f1f5f9; }
+.result-action-btn.primary { color: var(--brand); }
+
+/* ── 지도 화면 ── */
+#naver-map { flex: 1; }
+.map-search-bar {
+  background: white; padding: 12px 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08); z-index: 10;
+}
+.map-search-inner {
+  display: flex; align-items: center; gap: 8px;
+  background: #f1f5f9; border-radius: 12px; padding: 10px 14px;
+}
+.map-search-inner input {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 14px; font-family: inherit;
+}
+
+/* 지도 위 배지 */
+#map-result-badge {
+  position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+  background: var(--brand); color: white; padding: 8px 18px;
+  border-radius: 20px; font-size: 13px; font-weight: 700;
+  box-shadow: 0 4px 16px rgba(13,148,136,.4); z-index: 5;
+  pointer-events: none; display: none;
+}
+
+/* 바텀 시트 */
+.bottom-sheet {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+  background: white; border-radius: 24px 24px 0 0;
+  box-shadow: 0 -8px 40px rgba(0,0,0,.15);
+  transform: translateY(100%); transition: transform .3s cubic-bezier(.32,1.28,.41,.96);
+  max-height: 70vh; display: flex; flex-direction: column;
+}
+.bottom-sheet.open { transform: translateY(0); }
+.sheet-handle { width: 40px; height: 4px; background: #e2e8f0; border-radius: 2px; margin: 12px auto 0; flex-shrink: 0; }
+.sheet-content { overflow-y: auto; padding: 12px 16px 24px; }
+
+/* ── 빈 상태 ── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 24px; text-align: center; gap: 12px;
+}
+.empty-icon { font-size: 56px; }
+.empty-title { font-size: 18px; font-weight: 900; color: #334155; }
+.empty-sub { font-size: 13px; color: #94a3b8; line-height: 1.6; }
+
+/* ── 로딩 스피너 ── */
+.spinner {
+  width: 32px; height: 32px; border: 3px solid #e2e8f0;
+  border-top-color: var(--brand); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-overlay {
+  position: absolute; inset: 0; background: rgba(255,255,255,.8);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; z-index: 30;
+}
+.loading-text { font-size: 13px; font-weight: 700; color: #64748b; }
+
+/* ── 토스트 ── */
+#toast {
+  position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e293b; color: white; padding: 11px 20px;
+  border-radius: 12px; font-size: 13px; font-weight: 600;
+  z-index: 9999; opacity: 0; transition: all .25s; white-space: nowrap;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 네이버맵 커스텀 마커 */
+.naver-marker {
+  background: var(--brand); color: white; font-weight: 900; font-size: 12px;
+  padding: 5px 10px; border-radius: 16px; white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(13,148,136,.4); cursor: pointer;
+  position: relative;
+}
+.naver-marker::after {
+  content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 6px solid var(--brand);
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ── 화면 영역 ── -->
+  <div id="screen">
+
+    <!-- 홈 화면 -->
+    <div id="screen-home" class="screen active">
+      <!-- 헤더 -->
+      <div class="home-header">
+        <div class="home-logo">
+          <div class="home-logo-icon">℞</div>
+          <div>
+            <span>오더팜</span>
+            <small style="display:block">OrderPharm</small>
+          </div>
+        </div>
+        <div class="home-headline">찾는 약이<br/>어디에 있는지 바로 확인</div>
+        <div class="home-sub">내 주변 약국 재고를 실시간으로 검색해요</div>
+      </div>
+
+      <!-- 검색창 -->
+      <div class="search-box">
+        <div class="search-box-inner">
+          <svg width="18" height="18" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="home-search" type="text" placeholder="약품명 검색 (예: 타이레놀, 오메가3)"
+            oninput="onHomeSearchInput()" onkeydown="if(event.key==='Enter')goSearch()"/>
+          <button class="search-btn" onclick="goSearch()">
+            <svg width="16" height="16" fill="none" stroke="white" stroke-width="2.5" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+        <div class="chips-row" id="chips-row">
+          <button class="chip-btn" onclick="quickSearch('타이레놀')">💊 타이레놀</button>
+          <button class="chip-btn" onclick="quickSearch('오메가3')">🐟 오메가3</button>
+          <button class="chip-btn" onclick="quickSearch('루테인')">👁 루테인</button>
+          <button class="chip-btn" onclick="quickSearch('마그네슘')">🌿 마그네슘</button>
+          <button class="chip-btn" onclick="quickSearch('비타민C')">🍊 비타민C</button>
+          <button class="chip-btn" onclick="quickSearch('감기약')">🤧 감기약</button>
+          <button class="chip-btn" onclick="quickSearch('소화제')">💚 소화제</button>
+          <button class="chip-btn" onclick="quickSearch('파스')">🩹 파스</button>
+        </div>
+      </div>
+
+      <!-- 근처 약국 섹션 -->
+      <div class="section">
+        <div class="section-title">📍 내 <span>근처 약국</span></div>
+        <div id="nearby-list">
+          <div class="empty-state" style="padding:30px 0">
+            <div style="font-size:36px">📍</div>
+            <div style="font-size:14px;font-weight:700;color:#64748b">위치 정보를 불러오는 중...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 이용 안내 -->
+      <div style="margin:0 16px 24px;background:white;border-radius:16px;border:1.5px solid #e2e8f0;padding:16px">
+        <div style="font-size:13px;font-weight:900;color:#334155;margin-bottom:10px">💡 이렇게 사용하세요</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:18px">🔍</span>
+            <div>
+              <div style="font-size:13px;font-weight:700">약품명 검색</div>
+              <div style="font-size:12px;color:#64748b">"타이레놀" 검색 → 재고 있는 약국을 지도에서 확인</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:18px">🗺️</span>
+            <div>
+              <div style="font-size:13px;font-weight:700">지도로 보기</div>
+              <div style="font-size:12px;color:#64748b">지도 탭에서 근처 약국 위치를 한눈에</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <span style="font-size:18px">📞</span>
+            <div>
+              <div style="font-size:13px;font-weight:700">바로 전화</div>
+              <div style="font-size:12px;color:#64748b">약국 카드에서 한 번에 전화 연결</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- 검색 결과 화면 -->
+    <div id="screen-result" class="screen">
+      <div class="result-header">
+        <div class="result-back" onclick="goHome()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          홈으로
+        </div>
+        <div class="result-search-bar">
+          <svg width="16" height="16" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="result-search-input" type="text" placeholder="약품명 검색"
+            onkeydown="if(event.key==='Enter')doResultSearch()"/>
+          <button onclick="doResultSearch()" style="background:none;border:none;color:var(--brand);font-weight:700;font-size:13px;cursor:pointer">검색</button>
+        </div>
+      </div>
+      <div id="result-count-bar" class="result-count"></div>
+      <div id="result-cards"></div>
+      <div style="height:16px"></div>
+    </div>
+
+    <!-- 지도 화면 -->
+    <div id="screen-map" class="screen">
+      <div class="map-search-bar">
+        <div class="map-search-inner">
+          <svg width="16" height="16" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="map-search-input" type="text" placeholder="약품명으로 검색하면 핀 표시"
+            onkeydown="if(event.key==='Enter')doMapSearch()"/>
+          <button onclick="doMapSearch()" style="background:none;border:none;color:var(--brand);font-weight:700;font-size:13px;cursor:pointer;padding:0">검색</button>
+          <button onclick="myLocationMap()" title="내 위치" style="background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;color:#64748b">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="position:relative;flex:1;overflow:hidden">
+        <div id="naver-map" style="width:100%;height:100%"></div>
+        <div id="map-result-badge"></div>
+        <!-- 바텀 시트 -->
+        <div id="map-bottom-sheet" class="bottom-sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-content" id="sheet-content"></div>
+        </div>
+        <!-- 지도 로딩 -->
+        <div id="map-loading" class="loading-overlay" style="display:none">
+          <div class="spinner"></div>
+          <div class="loading-text" id="map-loading-text">검색 중...</div>
+        </div>
+        <!-- 네이버맵 키 없을 때 안내 -->
+        <div id="map-no-key" style="display:none;position:absolute;inset:0;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center">
+          <div style="font-size:48px">🗺️</div>
+          <div style="font-weight:900;font-size:17px;color:#334155">지도 API 키 설정 필요</div>
+          <div style="font-size:13px;color:#64748b;line-height:1.6">
+            네이버 클라우드 플랫폼에서<br/>Maps API를 신청하고<br/><b>consumer.html</b>의 <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">NAVER_CLIENT_ID</code>를<br/>교체해주세요
+          </div>
+          <a href="https://www.ncloud.com/product/applicationService/maps" target="_blank"
+            style="background:var(--brand);color:white;font-weight:700;padding:10px 20px;border-radius:12px;text-decoration:none;font-size:14px">
+            네이버 지도 API 신청 →
+          </a>
+          <div style="font-size:12px;color:#94a3b8">무료 월 300만 건 / 월 3만 건 geocoding</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /screen -->
+
+  <!-- ── 바텀 탭 ── -->
+  <div id="tab-bar">
+    <button class="tab-btn active" id="tab-home" onclick="switchTab('home')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      홈
+    </button>
+    <button class="tab-btn" id="tab-search" onclick="switchTab('search')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      약품 검색
+    </button>
+    <button class="tab-btn" id="tab-map" onclick="switchTab('map')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>
+      지도
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── 설정 ──
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const NAVER_READY = typeof naver !== 'undefined' && naver.maps;
+
+// 상태
+let _map = null, _mapMarkers = [], _myLat = null, _myLng = null;
+let _currentResults = [];
+let _searchTimeout = null;
+
+// ── 탭 전환 ──
+function switchTab(tab) {
+  ['home','search','map'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  if (tab === 'home') {
+    document.getElementById('screen-home').classList.add('active');
+  } else if (tab === 'search') {
+    document.getElementById('screen-result').classList.add('active');
+    setTimeout(() => document.getElementById('result-search-input').focus(), 100);
+  } else if (tab === 'map') {
+    document.getElementById('screen-map').classList.add('active');
+    if (!_map) initNaverMap();
+  }
+}
+
+// ── 홈 검색 ──
+function onHomeSearchInput() {
+  clearTimeout(_searchTimeout);
+  const v = document.getElementById('home-search').value.trim();
+  if (v.length >= 2) _searchTimeout = setTimeout(goSearch, 500);
+}
+function quickSearch(kw) {
+  document.getElementById('home-search').value = kw;
+  goSearch();
+}
+function goSearch() {
+  const kw = document.getElementById('home-search').value.trim();
+  if (!kw) return;
+  document.getElementById('result-search-input').value = kw;
+  switchTab('search');
+  doResultSearch();
+}
+function goHome() { switchTab('home'); }
+
+// ── 결과 화면 검색 ──
+async function doResultSearch() {
+  const keyword = document.getElementById('result-search-input').value.trim();
+  if (!keyword) return;
+  const cards = document.getElementById('result-cards');
+  const countBar = document.getElementById('result-count-bar');
+  cards.innerHTML = `<div class="loading-overlay" style="position:relative;height:160px;background:transparent"><div class="spinner"></div><div class="loading-text">"${keyword}" 검색 중...</div></div>`;
+  countBar.innerHTML = '';
+  try {
+    const { data, error } = await sb.rpc('search_inventory', { keyword });
+    if (error) throw error;
+    renderResults(keyword, data || []);
+  } catch(e) {
+    // 데모 데이터
+    renderResults(keyword, getDemoData(keyword));
+  }
+}
+
+function renderResults(keyword, raw) {
+  const countBar = document.getElementById('result-count-bar');
+  const cards = document.getElementById('result-cards');
+
+  if (!raw || raw.length === 0) {
+    countBar.innerHTML = '';
+    cards.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">😔</div>
+        <div class="empty-title">"${keyword}" 재고 없음</div>
+        <div class="empty-sub">오더팜에 등록된 약국 중<br/>현재 재고 있는 곳이 없어요.<br/>약국 수가 늘어나면 결과도 많아져요.</div>
+        <button onclick="document.getElementById('result-search-input').focus()" style="background:var(--brand);color:white;border:none;padding:10px 24px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;margin-top:8px">다시 검색</button>
+      </div>`;
+    return;
+  }
+
+  // 약국별 그룹
+  const map = {};
+  raw.forEach(r => {
+    if (!map[r.shop_id]) map[r.shop_id] = { ...r, products: [] };
+    map[r.shop_id].products.push(r);
+  });
+  _currentResults = Object.values(map);
+
+  countBar.innerHTML = `<strong>${_currentResults.length}개</strong> 약국에 재고 있어요`;
+  cards.innerHTML = '';
+
+  _currentResults.forEach((ph, i) => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    const dist = ph.distance ? `${ph.distance < 1000 ? ph.distance+'m' : (ph.distance/1000).toFixed(1)+'km'}` : '';
+    const isOpen = isOpenNow(ph.open_time, ph.close_time);
+    card.innerHTML = `
+      <div class="result-card-top">
+        <div class="result-num">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:900">${ph.pharmacy_name || '약국'}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">${ph.address || '주소 미등록'}</div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+            ${isOpen !== null ? `<span class="badge ${isOpen?'badge-open':'badge-closed'}">${isOpen?'🟢 영업중':'🔴 영업종료'}</span>` : ''}
+            ${dist ? `<span class="badge badge-dist">📍 ${dist}</span>` : ''}
+            <span class="badge badge-count">💊 ${ph.products.length}종</span>
+          </div>
+        </div>
+      </div>
+      <div class="result-drugs">
+        ${ph.products.slice(0,4).map(p=>`
+          <span class="drug-tag">
+            ${p.emoji||'💊'} ${p.product_name}
+            ${p.price ? `<span class="drug-price">${p.price.toLocaleString()}원</span>` : ''}
+          </span>`).join('')}
+        ${ph.products.length > 4 ? `<span style="font-size:12px;color:#94a3b8;align-self:center">+${ph.products.length-4}개 더</span>` : ''}
+      </div>
+      <div class="result-actions">
+        ${ph.phone ? `<button class="result-action-btn" onclick="event.stopPropagation();callPharmacy('${ph.phone}')">📞 전화</button>` : ''}
+        ${ph.lat && ph.lng ? `<button class="result-action-btn" onclick="event.stopPropagation();openNaverDir(${ph.lat},${ph.lng},'${ph.pharmacy_name||''}')">🗺️ 길찾기</button>` : ''}
+        <button class="result-action-btn primary" onclick="showOnMap(${i})">지도로 보기</button>
+      </div>`;
+    cards.appendChild(card);
+  });
+}
+
+function callPharmacy(phone) {
+  window.location.href = 'tel:' + phone;
+}
+function openNaverDir(lat, lng, name) {
+  window.open(`https://map.naver.com/p/search/${encodeURIComponent(name)}?c=${lng},${lat},15,0,0,0,dh`, '_blank');
+}
+function showOnMap(idx) {
+  const ph = _currentResults[idx];
+  switchTab('map');
+  if (!_map) { initNaverMap(); setTimeout(() => focusMapOnPharmacy(ph), 500); }
+  else focusMapOnPharmacy(ph);
+}
+
+// ── 지도 초기화 ──
+function initNaverMap() {
+  if (!NAVER_READY) {
+    document.getElementById('naver-map').style.display = 'none';
+    document.getElementById('map-no-key').style.display = 'flex';
+    return;
+  }
+  const center = _myLat
+    ? new naver.maps.LatLng(_myLat, _myLng)
+    : new naver.maps.LatLng(37.5665, 126.9780);
+  _map = new naver.maps.Map('naver-map', {
+    center, zoom: 14,
+    mapDataControl: false,
+    scaleControl: true,
+  });
+  loadNearbyOnMap();
+}
+
+function clearMapMarkers() {
+  _mapMarkers.forEach(m => m.setMap(null));
+  _mapMarkers = [];
+}
+
+async function doMapSearch() {
+  const keyword = document.getElementById('map-search-input').value.trim();
+  if (!keyword) return;
+  document.getElementById('map-loading').style.display = 'flex';
+  document.getElementById('map-loading-text').textContent = `"${keyword}" 검색 중...`;
+  document.getElementById('map-result-badge').style.display = 'none';
+  closeSheet();
+  clearMapMarkers();
+  try {
+    const { data, error } = await sb.rpc('search_inventory', { keyword });
+    if (error) throw error;
+    renderMapResults(keyword, data || []);
+  } catch(e) {
+    renderMapResults(keyword, getDemoData(keyword));
+  }
+  document.getElementById('map-loading').style.display = 'none';
+}
+
+function renderMapResults(keyword, raw) {
+  if (!raw || raw.length === 0) {
+    showToast(`"${keyword}" 재고 있는 약국 없음`);
+    return;
+  }
+  const map = {};
+  raw.forEach(r => {
+    if (!map[r.shop_id]) map[r.shop_id] = { ...r, products: [] };
+    map[r.shop_id].products.push(r);
+  });
+  const list = Object.values(map);
+
+  const badge = document.getElementById('map-result-badge');
+  badge.textContent = `💊 ${list.length}개 약국에 "${keyword}" 재고 있음`;
+  badge.style.display = 'block';
+
+  if (!_map) return;
+  const bounds = new naver.maps.LatLngBounds();
+
+  list.forEach((ph, i) => {
+    if (!ph.lat || !ph.lng) return;
+    const pos = new naver.maps.LatLng(ph.lat, ph.lng);
+    bounds.extend(pos);
+    const marker = new naver.maps.Marker({
+      map: _map, position: pos,
+      icon: {
+        content: `<div class="naver-marker">${i+1}. ${ph.pharmacy_name}</div>`,
+        anchor: new naver.maps.Point(0, 30),
+      }
+    });
+    naver.maps.Event.addListener(marker, 'click', () => focusMapOnPharmacy(ph));
+    _mapMarkers.push(marker);
+  });
+
+  if (!bounds.isEmpty()) _map.fitBounds(bounds, { top:60, right:40, bottom:40, left:40 });
+}
+
+async function loadNearbyOnMap() {
+  if (!_map) return;
+  try {
+    const { data } = await sb.from('pharmacies').select('*').limit(20);
+    if (!data) return;
+    data.forEach(ph => {
+      if (!ph.lat || !ph.lng) return;
+      const pos = new naver.maps.LatLng(ph.lat, ph.lng);
+      const marker = new naver.maps.Marker({
+        map: _map, position: pos,
+        icon: {
+          content: `<div class="naver-marker" style="background:#475569">${ph.pharmacy_name||'약국'}</div>`,
+          anchor: new naver.maps.Point(0, 30),
+        }
+      });
+      naver.maps.Event.addListener(marker, 'click', () => showSheetPharmacy(ph));
+      _mapMarkers.push(marker);
+    });
+  } catch(e) {}
+}
+
+function focusMapOnPharmacy(ph) {
+  if (!_map || !ph.lat || !ph.lng) return;
+  _map.setCenter(new naver.maps.LatLng(ph.lat, ph.lng));
+  _map.setZoom(16);
+  showSheetPharmacy(ph);
+}
+
+function showSheetPharmacy(ph) {
+  const content = document.getElementById('sheet-content');
+  const isOpen = isOpenNow(ph.open_time, ph.close_time);
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:46px;height:46px;background:var(--brand-soft);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🏥</div>
+      <div>
+        <div style="font-size:17px;font-weight:900">${ph.pharmacy_name||'약국'}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">${ph.address||'주소 미등록'}</div>
+        ${isOpen!==null ? `<span class="badge ${isOpen?'badge-open':'badge-closed'}" style="margin-top:5px;display:inline-flex">${isOpen?'🟢 영업중':'🔴 영업종료'}</span>` : ''}
+      </div>
+    </div>
+    ${ph.phone ? `<a href="tel:${ph.phone}" style="display:flex;align-items:center;gap:10px;background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:14px;padding:13px 16px;text-decoration:none;color:#0f766e;font-weight:700;font-size:14px;margin-bottom:10px">📞 ${ph.phone} 전화하기</a>` : ''}
+    ${ph.lat && ph.lng ? `<button onclick="openNaverDir(${ph.lat},${ph.lng},'${ph.pharmacy_name||''}')" style="width:100%;background:#03C75A;color:white;border:none;border-radius:14px;padding:13px;font-weight:700;font-size:14px;cursor:pointer">🗺️ 네이버 지도로 길찾기</button>` : ''}
+    ${ph.products && ph.products.length ? `
+      <div style="margin-top:14px;font-size:13px;font-weight:900;color:#334155;margin-bottom:8px">재고 목록</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${ph.products.slice(0,8).map(p=>`<span class="drug-tag">${p.emoji||'💊'} ${p.product_name}${p.price?` <span class="drug-price">${p.price.toLocaleString()}원</span>`:''}</span>`).join('')}
+      </div>` : ''}`;
+  openSheet();
+}
+
+function openSheet() { document.getElementById('map-bottom-sheet').classList.add('open'); }
+function closeSheet() { document.getElementById('map-bottom-sheet').classList.remove('open'); }
+
+// 지도 클릭 시 시트 닫기
+function myLocationMap() {
+  if (!navigator.geolocation) { showToast('위치 정보 지원 안 됨'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    _myLat = pos.coords.latitude; _myLng = pos.coords.longitude;
+    if (_map) {
+      _map.setCenter(new naver.maps.LatLng(_myLat, _myLng));
+      _map.setZoom(15);
+    }
+  }, () => showToast('위치 정보를 가져올 수 없어요'));
+}
+
+// ── 홈 근처 약국 로드 ──
+async function loadNearbyPharmacies() {
+  const listEl = document.getElementById('nearby-list');
+  try {
+    const { data } = await sb.from('pharmacies')
+      .select('*')
+      .eq('status', 'approved')
+      .limit(10);
+    if (!data || data.length === 0) {
+      listEl.innerHTML = `<div class="empty-state" style="padding:24px 0">
+        <div class="empty-icon" style="font-size:40px">🏥</div>
+        <div class="empty-title" style="font-size:15px">아직 등록된 약국이 없어요</div>
+        <div class="empty-sub">서비스 준비 중입니다</div>
+      </div>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    data.forEach(ph => {
+      const isOpen = isOpenNow(ph.open_time, ph.close_time);
+      const el = document.createElement('div');
+      el.className = 'pharm-card';
+      el.onclick = () => { switchTab('map'); setTimeout(() => focusMapOnPharmacy(ph), 300); };
+      el.innerHTML = `
+        <div class="pharm-icon">🏥</div>
+        <div style="flex:1;min-width:0">
+          <div class="pharm-name">${ph.pharmacy_name||'약국'}</div>
+          <div class="pharm-addr">${ph.address||'주소 미등록'}</div>
+          <div class="pharm-meta">
+            ${isOpen!==null ? `<span class="badge ${isOpen?'badge-open':'badge-closed'}">${isOpen?'영업중':'영업종료'}</span>` : ''}
+          </div>
+        </div>
+        <div class="pharm-action">
+          ${ph.phone ? `<div class="icon-btn" onclick="event.stopPropagation();callPharmacy('${ph.phone}')">📞</div>` : ''}
+          <div class="icon-btn" onclick="event.stopPropagation();switchTab('map');setTimeout(()=>focusMapOnPharmacy(${JSON.stringify(ph).replace(/"/g,'&quot;')}),300)">🗺️</div>
+        </div>`;
+      listEl.appendChild(el);
+    });
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state" style="padding:24px 0">
+      <div class="empty-icon" style="font-size:36px">📡</div>
+      <div class="empty-title" style="font-size:14px">데이터를 불러올 수 없어요</div>
+    </div>`;
+  }
+}
+
+// ── 유틸 ──
+function isOpenNow(open, close) {
+  if (!open || !close) return null;
+  const now = new Date();
+  const [oh,om] = open.split(':').map(Number);
+  const [ch,cm] = close.split(':').map(Number);
+  const cur = now.getHours()*60 + now.getMinutes();
+  return cur >= oh*60+om && cur < ch*60+cm;
+}
+
+function getDemoData(keyword) {
+  return [
+    { shop_id:'demo1', pharmacy_name:'우리약국', address:'서울 강남구 테헤란로 123', lat:37.5012, lng:127.0396, phone:'02-1234-5678', emoji:'💊', product_name:keyword, price:6500 },
+    { shop_id:'demo2', pharmacy_name:'파랑새약국', address:'서울 강남구 역삼동 456', lat:37.5000, lng:127.0400, phone:'02-9876-5432', emoji:'💊', product_name:keyword, price:null },
+  ];
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── 초기화 ──
+window.addEventListener('load', () => {
+  loadNearbyPharmacies();
+  // 위치 권한 미리 요청
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      _myLat = pos.coords.latitude;
+      _myLng = pos.coords.longitude;
+    }, () => {});
+  }
+});
+
+// 지도 화면 바깥 클릭 시 시트 닫기
+document.addEventListener('click', e => {
+  const sheet = document.getElementById('map-bottom-sheet');
+  if (sheet && !sheet.contains(e.target) && !e.target.closest('.naver-marker')) closeSheet();
+});
+</script>
+</body>
+</html>
