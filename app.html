@@ -1842,6 +1842,14 @@ function getMyOrderList() {
 /* ─── 주문 플로우 ─── */
 function startOrder() {
   if (cart.length === 0) { showToast('먼저 제품을 장바구니에 담아주세요'); return; }
+
+  // QR 결제 가드: QR 스캔 세션 없으면 재스캔 안내
+  // 관리자 모드는 항상 허용 (약사님 직접 사용)
+  if (!isAdminMode && !window._paymentEnabled) {
+    checkPaymentAccess(() => startOrder());
+    return;
+  }
+
   toggleCart(false);
   // 결제 모달로 바로 진입 (접수번호는 결제 완료 후 발급)
   const total = cart.reduce((s, c) => {
@@ -3770,9 +3778,11 @@ function reprintOrderAlert() {
 /* ─── 세션 기반 가격 공개 (QR 접속 후 1시간) ─── */
 const SESSION_MINUTES = 60;
 window._qrPriceVisible = false;
+window._paymentEnabled = false; // QR 스캔 시에만 true
 
 function _expireSession(reason) {
   window._qrPriceVisible = false;
+  window._paymentEnabled = false;
   // 장바구니 즉시 초기화 — 만료 후 허위 주문 방지
   cart = [];
   updateCartUI();
@@ -3796,6 +3806,7 @@ function _expireSession(reason) {
 
 function _startSession() {
   window._qrPriceVisible = true;
+  window._paymentEnabled = true; // QR 스캔 확인 → 결제 활성화
   renderProducts();
   clearTimeout(window._sessionExpireTimer);
   const limitMs = SESSION_MINUTES * 60 * 1000;
@@ -5065,12 +5076,112 @@ async function _applyRemoteData(showToastMsg, bgMode = false) {
         currentCat = data.categories[0]?.id || 'hot';
         applyHeader(); renderCategories(); renderProducts();
         renderSidebarBundleBtn(); updateCartUI();
+      } else if (session && !remote?.products?.length) {
+        // 서버에 데이터 없음 = 신규 약국 → 시작 템플릿 안내
+        hideLoading();
+        _showStarterPrompt();
+        return;
       }
     }
   } catch(_) {}
 
   hideLoading();
 })();
+
+// ── 신규 약국 시작 템플릿 안내 ──────────────────────────────
+function _showStarterPrompt() {
+  const overlay = document.createElement('div');
+  overlay.id = 'starter-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,0.92);display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML = `
+    <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:36px 28px;max-width:400px;width:100%;text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">🏥</div>
+      <h2 style="color:white;font-size:20px;font-weight:900;margin:0 0 8px">처음 오셨군요!</h2>
+      <p style="color:rgba(255,255,255,0.6);font-size:14px;line-height:1.6;margin:0 0 24px">
+        아직 등록된 제품이 없어요.<br/>
+        오더팜 추천 샘플 제품 <b style="color:#2dd4bf">14종</b>으로<br/>
+        바로 시작해보세요.
+      </p>
+      <div style="background:rgba(13,148,136,0.1);border:1px solid rgba(13,148,136,0.3);border-radius:12px;padding:12px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,0.5);text-align:left;line-height:1.8">
+        ✅ 영양제·상비약·눈건강 등 6개 분류<br/>
+        ✅ 약사 복약지도 포함 14개 제품<br/>
+        ✅ 가격·재고는 직접 수정 가능
+      </div>
+      <button onclick="_loadStarterData()" 
+        style="width:100%;padding:14px;background:#0d9488;color:white;font-weight:900;font-size:15px;border:none;border-radius:14px;cursor:pointer;margin-bottom:10px">
+        📦 샘플 데이터로 시작하기
+      </button>
+      <button onclick="document.getElementById('starter-overlay').remove()"
+        style="width:100%;padding:12px;background:transparent;color:rgba(255,255,255,0.4);font-size:13px;border:none;cursor:pointer">
+        처음부터 직접 입력할게요
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function _loadStarterData() {
+  const btn = document.querySelector('#starter-overlay button');
+  if (btn) { btn.textContent = '불러오는 중...'; btn.disabled = true; }
+  try {
+    const res = await fetch('./starter_data.json', { cache: 'no-store' });
+    const starter = await res.json();
+    // 약국명은 현재 설정된 이름으로
+    const pharmacyName = document.getElementById('header-name')?.textContent || '우리약국';
+    starter.settings = { ...starter.settings, pharmacyName };
+    starter._savedAt = Date.now();
+    // 서버에 저장
+    await fetch(`${PROXY}/?action=saveData&shopId=${getShopId()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(starter)
+    });
+    // 로컬에도 저장
+    data = migrate(starter);
+    localStorage.setItem(STORAGE_KEY + '_' + getShopId(), JSON.stringify(starter));
+    currentCat = data.categories[0]?.id || 'hot';
+    applyHeader(); renderCategories(); renderProducts();
+    renderSidebarBundleBtn(); updateCartUI();
+    document.getElementById('starter-overlay').remove();
+    showToast('✅ 샘플 데이터 14개 제품이 등록됐습니다! 가격과 재고를 수정해서 사용하세요.');
+  } catch(e) {
+    showToast('❌ 불러오기 실패: ' + e.message);
+    const btn2 = document.querySelector('#starter-overlay button');
+    if (btn2) { btn2.textContent = '📦 샘플 데이터로 시작하기'; btn2.disabled = false; }
+  }
+}
+
+
+// ── QR 결제 가드 ─────────────────────────────────────────────
+// 결제 버튼 클릭 전 호출 → QR 세션 없으면 재스캔 안내
+function checkPaymentAccess(onAllowed) {
+  if (window._paymentEnabled) {
+    onAllowed(); return;
+  }
+  // QR 미스캔 → 재스캔 안내 모달 표시
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-payment-gate';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,0.92);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:36px 28px;max-width:340px;width:100%;text-align:center">
+      <div style="font-size:52px;margin-bottom:16px">📱</div>
+      <h2 style="color:white;font-size:18px;font-weight:900;margin:0 0 8px">결제를 위해 QR을 스캔해주세요</h2>
+      <p style="color:rgba(255,255,255,0.55);font-size:13px;line-height:1.7;margin:0 0 24px">
+        약국 내 비치된 QR코드를 스캔하면<br/>결제가 바로 활성화됩니다.<br/>
+        <span style="color:rgba(255,255,255,0.35);font-size:11px">장바구니는 그대로 유지됩니다</span>
+      </p>
+      <div style="background:rgba(13,148,136,0.15);border:1px solid rgba(13,148,136,0.3);border-radius:12px;padding:14px;margin-bottom:20px">
+        <div style="color:#2dd4bf;font-size:12px;font-weight:600">💡 QR 스캔 방법</div>
+        <div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:4px;line-height:1.6">
+          폰 카메라 → 약국 테이블 위 QR 카드 스캔<br/>또는 약사님께 QR 카드 요청
+        </div>
+      </div>
+      <button onclick="document.getElementById('qr-payment-gate').remove()"
+        style="width:100%;padding:13px;background:transparent;color:rgba(255,255,255,0.4);font-size:13px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;cursor:pointer">
+        닫기
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
 
 // ── 관리자 세션 복구 & URL 파라미터 처리 ──
 if (sessionStorage.getItem('pharm_admin_session') === '1') {
