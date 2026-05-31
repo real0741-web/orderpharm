@@ -263,7 +263,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return;
   const { data: p } = await sb.from('profiles').select('shop_id,status').eq('id', session.user.id).single();
-  if (p?.status === 'approved' && p?.shop_id) location.href = './app.html?shop=' + p.shop_id;
+  if (p?.status === 'approved' && p?.shop_id) {
+    // shop1 → 우리약국 키오스크, shop2 → 파랑새약국 키오스크
+    const kioskMap = {
+      shop1: 'https://real0741-web.github.io/local-pharmacy/',
+      shop2: 'https://real0741-web.github.io/local-pharmacy/?shopId=shop2',
+    };
+    location.href = kioskMap[p.shop_id] || ('./app.html?shop=' + p.shop_id);
+  }
   else if (p?.status === 'pending') showDone('가입 신청이 검토 중입니다.<br/>승인 후 다시 로그인해주세요.');
 })();
 
@@ -301,7 +308,10 @@ async function doLogin() {
   if(error){errEl.textContent='이메일 또는 비밀번호가 틀렸습니다.';errEl.classList.remove('hidden');return;}
   const {data:{user}}=await sb.auth.getUser();
   const {data:p}=await sb.from('profiles').select('shop_id,status').eq('id',user.id).single();
-  if(p?.status==='approved'&&p?.shop_id) location.href='./app.html?shop='+p.shop_id;
+  if(p?.status==='approved'&&p?.shop_id){
+    const kioskMap={shop1:'https://real0741-web.github.io/local-pharmacy/',shop2:'https://real0741-web.github.io/local-pharmacy/?shopId=shop2'};
+    location.href=kioskMap[p.shop_id]||('./app.html?shop='+p.shop_id);
+  }
   else if(p?.status==='pending'){showDone('가입 신청이 검토 중입니다.<br/>승인 후 이용 가능합니다.');closeModal();}
   else if(p?.status==='rejected'){errEl.textContent='가입이 거절됐습니다. 관리자에게 문의하세요.';errEl.classList.remove('hidden');}
   else{errEl.textContent='계정 상태를 확인할 수 없습니다.';errEl.classList.remove('hidden');}
