@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>오더팜 관리자 대시보드</title>
+<meta name="theme-color" content="#0d9488"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+  * { font-family: 'Noto Sans KR', -apple-system, sans-serif; box-sizing: border-box; }
+  :root { --brand: #0d9488; --brand-dark: #0f766e; }
+  input:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--brand) !important;
+    box-shadow: 0 0 0 3px rgba(13,148,136,.15);
+  }
+  .card { background: white; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 24px; }
+  .field-label { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; display: block; }
+  .field-input {
+    width: 100%; border: 1.5px solid #e2e8f0; border-radius: 10px;
+    padding: 10px 14px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s;
+  }
+  .btn-primary {
+    background: var(--brand); color: white; font-weight: 700; border: none;
+    border-radius: 12px; padding: 12px 24px; cursor: pointer; font-size: 14px;
+    transition: background .15s; font-family: inherit;
+  }
+  .btn-primary:hover { background: var(--brand-dark); }
+  .btn-secondary {
+    background: #f1f5f9; color: #334155; font-weight: 700; border: none;
+    border-radius: 12px; padding: 12px 24px; cursor: pointer; font-size: 14px;
+    transition: background .15s; font-family: inherit;
+  }
+  .btn-secondary:hover { background: #e2e8f0; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  }
+  .status-approved { background: #dcfce7; color: #16a34a; }
+  .status-pending { background: #fef9c3; color: #ca8a04; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #1e293b; color: white; padding: 11px 20px; border-radius: 12px;
+    font-size: 13px; font-weight: 600; z-index: 9999; opacity: 0;
+    transition: all .25s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .section-title { font-size: 17px; font-weight: 900; color: #0f172a; margin-bottom: 16px; }
+  .kiosk-btn {
+    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, #0f766e, #0d9488);
+    color: white; border: none; border-radius: 16px; padding: 18px 24px;
+    cursor: pointer; width: 100%; text-align: left; transition: opacity .15s;
+    font-family: inherit;
+  }
+  .kiosk-btn:hover { opacity: .9; }
+  .kiosk-icon {
+    width: 48px; height: 48px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; flex-shrink: 0;
+  }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- 헤더 -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+  <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-teal-500 flex items-center justify-center font-bold text-white text-sm">℞</div>
+      <div>
+        <div class="font-black text-slate-800 leading-tight">오더팜</div>
+        <div id="header-pharmacy" class="text-xs text-teal-600 font-semibold leading-tight"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="header-status" class="status-badge status-approved hidden">✅ 승인됨</span>
+      <button onclick="doLogout()" class="text-sm text-slate-400 hover:text-slate-600 transition-colors">로그아웃</button>
+    </div>
+  </div>
+</header>
+
+<div class="max-w-3xl mx-auto px-4 py-6 space-y-5">
+
+  <!-- 키오스크 바로가기 -->
+  <div>
+    <div class="section-title">🖥️ 키오스크</div>
+    <button id="kiosk-btn" class="kiosk-btn" onclick="openKiosk()">
+      <div class="kiosk-icon">🏥</div>
+      <div>
+        <div class="font-black text-lg">키오스크 열기</div>
+        <div style="font-size:13px;opacity:.8;margin-top:2px" id="kiosk-url-label">우리약국 디지털 가이드</div>
+      </div>
+      <div class="ml-auto text-2xl opacity-70">→</div>
+    </button>
+  </div>
+
+  <!-- 약국 정보 관리 -->
+  <div>
+    <div class="section-title">🏪 약국 정보</div>
+    <div class="card">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <div class="sm:col-span-2">
+          <label class="field-label">약국 상호명 *</label>
+          <input id="f-name" class="field-input" type="text" placeholder="우리약국"/>
+        </div>
+
+        <div>
+          <label class="field-label">대표자 성명</label>
+          <input id="f-owner" class="field-input" type="text" placeholder="홍길동"/>
+        </div>
+        <div>
+          <label class="field-label">연락처</label>
+          <input id="f-phone" class="field-input" type="tel" placeholder="010-0000-0000"/>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="field-label">주소</label>
+          <input id="f-address" class="field-input" type="text" placeholder="서울시 강남구 테헤란로 123"/>
+        </div>
+
+        <div>
+          <label class="field-label">위도 (lat) <span class="text-slate-400 font-normal">— 지도 핀 표시용</span></label>
+          <input id="f-lat" class="field-input" type="number" step="0.000001" placeholder="37.5012"/>
+        </div>
+        <div>
+          <label class="field-label">경도 (lng)</label>
+          <input id="f-lng" class="field-input" type="number" step="0.000001" placeholder="127.0396"/>
+        </div>
+
+        <div>
+          <label class="field-label">영업 시작</label>
+          <input id="f-open" class="field-input" type="time" value="09:00"/>
+        </div>
+        <div>
+          <label class="field-label">영업 종료</label>
+          <input id="f-close" class="field-input" type="time" value="18:00"/>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="field-label">약국 소개 (선택)</label>
+          <textarea id="f-desc" class="field-input" rows="2" placeholder="약국 한 줄 소개를 입력하세요" style="resize:vertical"></textarea>
+        </div>
+
+        <!-- 좌표 자동 찾기 버튼 -->
+        <div class="sm:col-span-2">
+          <button onclick="findCoords()" class="btn-secondary w-full text-sm py-2.5">
+            📍 주소로 좌표 자동 입력 (네이버 지도에서 찾기)
+          </button>
+          <div id="coords-help" class="hidden mt-2 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
+            1. <a href="https://map.naver.com" target="_blank" class="text-teal-600 font-semibold">map.naver.com</a> 접속<br/>
+            2. 약국 주소 검색 → 해당 위치 클릭<br/>
+            3. URL에서 좌표 확인: <code>map.naver.com/p/.../@<b>경도,위도</b>...</code><br/>
+            4. 위도/경도 입력 후 저장
+          </div>
+        </div>
+
+      </div>
+
+      <div class="flex gap-3 mt-5 pt-4 border-t border-slate-100">
+        <button onclick="saveProfile()" class="btn-primary flex-1">저장</button>
+        <button onclick="loadProfile()" class="btn-secondary">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 공개 재고 현황 -->
+  <div>
+    <div class="flex items-center justify-between mb-4">
+      <div class="section-title mb-0">💊 공개 재고 현황</div>
+      <span class="text-xs text-slate-400 font-semibold">환자 검색에 노출되는 제품</span>
+    </div>
+    <div class="card">
+      <div id="inventory-list">
+        <div class="text-center py-8 text-slate-400">
+          <div class="text-3xl mb-2">🔗</div>
+          <div class="font-semibold text-sm">키오스크와 연동 준비 중</div>
+          <div class="text-xs mt-1">키오스크에서 제품을 "공개" 설정하면 여기에 표시돼요</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 서비스 안내 -->
+  <div class="card bg-teal-50 border-teal-200">
+    <div class="font-black text-teal-800 mb-2">🚀 오더팜 서비스 로드맵</div>
+    <div class="space-y-2 text-sm text-teal-700">
+      <div class="flex gap-2"><span>✅</span><span>약국 계정 가입 · 로그인</span></div>
+      <div class="flex gap-2"><span>✅</span><span>키오스크 연결 (우리약국)</span></div>
+      <div class="flex gap-2"><span>🔄</span><span>약국 프로필 · 위치 등록 → 지도 핀 표시</span></div>
+      <div class="flex gap-2"><span>⏳</span><span>키오스크 재고 → 환자 검색 연동</span></div>
+      <div class="flex gap-2"><span>⏳</span><span>환자용 앱 (consumer.html) 정식 오픈</span></div>
+      <div class="flex gap-2"><span>⏳</span><span>약품 공유 게시판 연동</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const KIOSK_MAP = {
+  shop1: 'https://real0741-web.github.io/local-pharmacy/',
+  shop2: 'https://real0741-web.github.io/local-pharmacy/?shopId=shop2',
+};
+
+let _profile = null;
+let _userId  = null;
+
+// ── 초기화 ──
+window.addEventListener('load', async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.href = './index.html'; return; }
+  _userId = session.user.id;
+  await loadProfile();
+});
+
+async function loadProfile() {
+  const { data: p, error } = await sb.from('profiles')
+    .select('*').eq('id', _userId).single();
+  if (error || !p) { location.href = './index.html'; return; }
+  if (p.status !== 'approved') {
+    location.href = './index.html';
+    return;
+  }
+  _profile = p;
+
+  // 헤더
+  document.getElementById('header-pharmacy').textContent = p.pharmacy_name || '';
+  document.getElementById('header-status').classList.remove('hidden');
+
+  // 키오스크 버튼
+  const kioskUrl = KIOSK_MAP[p.shop_id] || ('./app.html?shop=' + p.shop_id);
+  document.getElementById('kiosk-url-label').textContent = kioskUrl.replace('https://', '');
+
+  // 폼 채우기
+  document.getElementById('f-name').value    = p.pharmacy_name  || '';
+  document.getElementById('f-owner').value   = p.owner_name     || '';
+  document.getElementById('f-phone').value   = p.phone          || '';
+  document.getElementById('f-address').value = p.address        || '';
+  document.getElementById('f-lat').value     = p.lat            || '';
+  document.getElementById('f-lng').value     = p.lng            || '';
+  document.getElementById('f-open').value    = p.open_time      || '09:00';
+  document.getElementById('f-close').value   = p.close_time     || '18:00';
+  document.getElementById('f-desc').value    = p.description    || '';
+
+  // 공개 재고 로드
+  loadInventory(p.shop_id);
+}
+
+async function saveProfile() {
+  const body = {
+    pharmacy_name: document.getElementById('f-name').value.trim(),
+    owner_name:    document.getElementById('f-owner').value.trim(),
+    phone:         document.getElementById('f-phone').value.trim(),
+    address:       document.getElementById('f-address').value.trim(),
+    lat:           parseFloat(document.getElementById('f-lat').value) || null,
+    lng:           parseFloat(document.getElementById('f-lng').value) || null,
+    open_time:     document.getElementById('f-open').value,
+    close_time:    document.getElementById('f-close').value,
+    description:   document.getElementById('f-desc').value.trim(),
+    updated_at:    new Date().toISOString(),
+  };
+  if (!body.pharmacy_name) { showToast('약국 상호명을 입력해주세요'); return; }
+
+  const { error } = await sb.from('profiles').update(body).eq('id', _userId);
+  if (error) { showToast('저장 실패: ' + error.message); return; }
+
+  // pharmacies 테이블에도 동기화 (consumer.html 검색용)
+  await syncToPharmacies(body);
+
+  document.getElementById('header-pharmacy').textContent = body.pharmacy_name;
+  showToast('✅ 저장됐어요!');
+}
+
+async function syncToPharmacies(body) {
+  if (!_profile?.shop_id) return;
+  // pharmacies 테이블이 있으면 upsert
+  await sb.from('pharmacies').upsert({
+    shop_id:       _profile.shop_id,
+    pharmacy_name: body.pharmacy_name,
+    owner_name:    body.owner_name,
+    phone:         body.phone,
+    address:       body.address,
+    lat:           body.lat,
+    lng:           body.lng,
+    open_time:     body.open_time,
+    close_time:    body.close_time,
+    description:   body.description,
+    status:        'approved',
+    updated_at:    body.updated_at,
+  }, { onConflict: 'shop_id' });
+}
+
+async function loadInventory(shopId) {
+  const listEl = document.getElementById('inventory-list');
+  try {
+    const { data } = await sb.from('public_inventory')
+      .select('*').eq('shop_id', shopId).eq('is_public', true);
+    if (!data || data.length === 0) return; // 기본 안내 그대로
+    listEl.innerHTML = `
+      <div class="text-xs text-slate-400 font-semibold mb-3">${data.length}개 제품 공개 중</div>
+      <div class="space-y-2">
+        ${data.map(p => `
+          <div class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+            <div class="text-xl">${p.emoji||'💊'}</div>
+            <div class="flex-1">
+              <div class="font-bold text-sm">${p.product_name}</div>
+              <div class="text-xs text-slate-400">${p.tagline||''}</div>
+            </div>
+            ${p.price ? `<div class="text-teal-600 font-black text-sm">${p.price.toLocaleString()}원</div>` : '<div class="text-xs text-slate-400">가격 비공개</div>'}
+          </div>`).join('')}
+      </div>`;
+  } catch(e) {}
+}
+
+function openKiosk() {
+  if (!_profile?.shop_id) return;
+  const url = KIOSK_MAP[_profile.shop_id] || ('./app.html?shop=' + _profile.shop_id);
+  window.open(url, '_blank');
+}
+
+function findCoords() {
+  document.getElementById('coords-help').classList.toggle('hidden');
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  location.href = './index.html';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>

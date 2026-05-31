@@ -288,8 +288,8 @@ let _approvedShopId = null;
 })();
 
 function goKiosk() {
-  if (!_approvedShopId) return;
-  location.href = KIOSK_MAP[_approvedShopId] || ('./app.html?shop=' + _approvedShopId);
+  // 로그인 후 → 대시보드로
+  location.href = './dashboard.html';
 }
 
 async function doLogout() {
