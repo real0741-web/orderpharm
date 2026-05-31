@@ -319,10 +319,36 @@ async function doRegister() {
   if(pw.length<8){errEl.textContent='비밀번호는 8자 이상이어야 합니다.';errEl.classList.remove('hidden');return;}
   if(!/^\d{3}-\d{2}-\d{5}$/.test(biznum)){errEl.textContent='사업자등록번호 형식을 확인해주세요. (000-00-00000)';errEl.classList.remove('hidden');return;}
   if(!/^\d{8}$/.test(birth)){errEl.textContent='생년월일 8자리를 입력해주세요. (예: 19800101)';errEl.classList.remove('hidden');return;}
+
+  // 1. Supabase Auth 계정 생성
   const {data,error}=await sb.auth.signUp({email,password:pw});
-  if(error){errEl.textContent=error.message.includes('already')?'이미 가입된 이메일입니다.':error.message;errEl.classList.remove('hidden');return;}
-  const {error:pe}=await sb.from('profiles').insert({id:data.user.id,email,pharmacy_name:pharmacy,business_number:biznum,owner_name:owner,owner_birth:birth,phone,status:'pending'});
-  if(pe){errEl.textContent='정보 저장 실패: '+pe.message;errEl.classList.remove('hidden');return;}
+  if(error){
+    if(error.message.includes('already')||error.message.includes('registered')) {
+      errEl.textContent='이미 가입된 이메일입니다. 로그인 탭을 이용해주세요.';
+    } else {
+      errEl.textContent='가입 오류: '+error.message;
+    }
+    errEl.classList.remove('hidden'); return;
+  }
+  if(!data.user){errEl.textContent='가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';errEl.classList.remove('hidden');return;}
+
+  // 2. SECURITY DEFINER 함수로 프로필 저장 (RLS/이메일인증 우회)
+  const {data:rpcData,error:pe}=await sb.rpc('register_pharmacy',{
+    p_id: data.user.id,
+    p_email: email,
+    p_pharmacy_name: pharmacy,
+    p_business_number: biznum,
+    p_owner_name: owner,
+    p_owner_birth: birth,
+    p_phone: phone
+  });
+  if(pe){errEl.textContent='약국 정보 저장 실패: '+pe.message;errEl.classList.remove('hidden');return;}
+  if(rpcData==='already_exists'){
+    // 이미 프로필 있음 → 로그인 시도
+    closeModal();
+    showDone('이미 가입 신청된 계정입니다.<br/>로그인을 시도해주세요.');
+    return;
+  }
   closeModal();
   showDone('<b>'+pharmacy+'</b> 가입 신청이 완료됐습니다!<br/>관리자 검토 후 승인 시 이용 가능합니다.');
 }
