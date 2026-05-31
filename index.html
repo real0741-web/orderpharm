@@ -39,9 +39,15 @@
       <span class="font-black text-lg text-white">오더팜</span>
       <span class="text-teal-400 text-sm font-semibold hidden sm:block">OrderPharm</span>
     </div>
-    <div class="flex items-center gap-3">
+    <div id="header-btns" class="flex items-center gap-3">
       <button onclick="openModal('login')" class="px-4 py-2 text-sm font-semibold text-teal-300 hover:text-white transition-colors">로그인</button>
       <button onclick="openModal('register')" class="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-bold rounded-xl transition-colors">가입 신청</button>
+    </div>
+    <!-- 로그인 상태일 때 표시 -->
+    <div id="header-logged" class="hidden items-center gap-3">
+      <span id="header-pharmacy-name" class="text-sm text-teal-300 font-semibold"></span>
+      <button id="header-kiosk-btn" onclick="goKiosk()" class="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-bold rounded-xl transition-colors">내 키오스크 →</button>
+      <button onclick="doLogout()" class="px-3 py-2 text-xs text-white/40 hover:text-white/70 transition-colors">로그아웃</button>
     </div>
   </div>
 </header>
@@ -258,21 +264,38 @@ const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-/* 이미 로그인 → 바로 앱으로 */
+/* 이미 로그인 → 헤더에 키오스크 버튼 표시 (자동 이동 X) */
+const KIOSK_MAP = {
+  shop1: 'https://real0741-web.github.io/local-pharmacy/',
+  shop2: 'https://real0741-web.github.io/local-pharmacy/?shopId=shop2',
+};
+let _approvedShopId = null;
+
 (async () => {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return;
-  const { data: p } = await sb.from('profiles').select('shop_id,status').eq('id', session.user.id).single();
+  const { data: p } = await sb.from('profiles').select('shop_id,status,pharmacy_name').eq('id', session.user.id).single();
   if (p?.status === 'approved' && p?.shop_id) {
-    // shop1 → 우리약국 키오스크, shop2 → 파랑새약국 키오스크
-    const kioskMap = {
-      shop1: 'https://real0741-web.github.io/local-pharmacy/',
-      shop2: 'https://real0741-web.github.io/local-pharmacy/?shopId=shop2',
-    };
-    location.href = kioskMap[p.shop_id] || ('./app.html?shop=' + p.shop_id);
+    _approvedShopId = p.shop_id;
+    document.getElementById('header-btns').classList.add('hidden');
+    const loggedEl = document.getElementById('header-logged');
+    loggedEl.classList.remove('hidden');
+    loggedEl.classList.add('flex');
+    document.getElementById('header-pharmacy-name').textContent = p.pharmacy_name || p.shop_id;
+  } else if (p?.status === 'pending') {
+    showDone('가입 신청이 검토 중입니다.<br/>승인 후 다시 로그인해주세요.');
   }
-  else if (p?.status === 'pending') showDone('가입 신청이 검토 중입니다.<br/>승인 후 다시 로그인해주세요.');
 })();
+
+function goKiosk() {
+  if (!_approvedShopId) return;
+  location.href = KIOSK_MAP[_approvedShopId] || ('./app.html?shop=' + _approvedShopId);
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  location.reload();
+}
 
 /* ── 모달 ── */
 function openModal(tab) { document.getElementById('modal-overlay').classList.remove('hidden'); switchTab(tab); }
@@ -309,8 +332,15 @@ async function doLogin() {
   const {data:{user}}=await sb.auth.getUser();
   const {data:p}=await sb.from('profiles').select('shop_id,status').eq('id',user.id).single();
   if(p?.status==='approved'&&p?.shop_id){
-    const kioskMap={shop1:'https://real0741-web.github.io/local-pharmacy/',shop2:'https://real0741-web.github.io/local-pharmacy/?shopId=shop2'};
-    location.href=kioskMap[p.shop_id]||('./app.html?shop='+p.shop_id);
+    _approvedShopId=p.shop_id;
+    closeModal();
+    document.getElementById('header-btns').classList.add('hidden');
+    const loggedEl=document.getElementById('header-logged');
+    loggedEl.classList.remove('hidden');
+    loggedEl.classList.add('flex');
+    document.getElementById('header-pharmacy-name').textContent=p.pharmacy_name||p.shop_id;
+    // 로그인 직후엔 바로 키오스크로 이동
+    goKiosk();
   }
   else if(p?.status==='pending'){showDone('가입 신청이 검토 중입니다.<br/>승인 후 이용 가능합니다.');closeModal();}
   else if(p?.status==='rejected'){errEl.textContent='가입이 거절됐습니다. 관리자에게 문의하세요.';errEl.classList.remove('hidden');}
