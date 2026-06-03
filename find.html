@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>약품 찾기 — 오더팜 OrderPharm</title>
+<meta name="theme-color" content="#0d9488"/>
+<link rel="apple-touch-icon" href="./icons/icon-192.png"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- 네이버 지도 API (발급 후 아래 NAVER_CLIENT_ID 교체) -->
+<script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=y7t7e0vvnk&submodules=geocoder"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+  * { font-family: 'Noto Sans KR', -apple-system, sans-serif; box-sizing: border-box; }
+  body { margin: 0; background: #f8fafc; }
+  #map { width: 100%; height: 100%; }
+  .pin-info { animation: slideUp .25s ease; }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .chip { transition: all .15s; cursor: pointer; }
+  .chip:hover { transform: translateY(-1px); }
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- 헤더 + 검색 -->
+<div class="bg-white border-b border-slate-200 shadow-sm z-20 relative shrink-0">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="flex items-center gap-3 py-3">
+      <a href="./index.html" class="flex items-center gap-2 shrink-0">
+        <div class="w-8 h-8 rounded-xl bg-teal-500 flex items-center justify-center font-bold text-white text-sm">&#8478;</div>
+        <span class="font-black text-slate-800 hidden sm:block">오더팜</span>
+      </a>
+      <div class="flex-1 relative">
+        <input id="search-input" type="text"
+          placeholder="&#128138; 약품명으로 검색 (예: 타이레놀, 오메가3, 루테인)"
+          class="w-full pl-4 pr-12 py-2.5 rounded-xl border-2 border-slate-200 focus:border-teal-400 focus:outline-none text-sm bg-slate-50 focus:bg-white transition-all"
+          oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()"/>
+        <button onclick="doSearch()"
+          class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-teal-500 hover:bg-teal-400 rounded-lg flex items-center justify-center text-white text-sm transition-colors">
+          &#128269;
+        </button>
+      </div>
+      <button onclick="locateMe()" title="내 위치"
+        class="shrink-0 w-10 h-10 rounded-xl border-2 border-slate-200 flex items-center justify-center text-slate-500 hover:border-teal-400 hover:text-teal-500 transition-all text-lg">
+        &#127987;
+      </button>
+    </div>
+    <!-- 빠른 검색 칩 -->
+    <div class="flex gap-2 pb-3 overflow-x-auto">
+      <span class="text-xs text-slate-400 shrink-0 self-center">인기:</span>
+      <button onclick="quickSearch('타이레놀')" class="chip shrink-0 px-3 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-semibold">&#128138; 타이레놀</button>
+      <button onclick="quickSearch('오메가3')" class="chip shrink-0 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-semibold">&#128031; 오메가3</button>
+      <button onclick="quickSearch('루테인')" class="chip shrink-0 px-3 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">&#128065; 루테인</button>
+      <button onclick="quickSearch('마그네슘')" class="chip shrink-0 px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-xs font-semibold">&#127807; 마그네슘</button>
+      <button onclick="quickSearch('비타민C')" class="chip shrink-0 px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-full text-xs font-semibold">&#127818; 비타민C</button>
+      <button onclick="quickSearch('판콜')" class="chip shrink-0 px-3 py-1 bg-slate-50 text-slate-700 border border-slate-200 rounded-full text-xs font-semibold">&#129298; 판콜</button>
+      <button onclick="quickSearch('인공눈물')" class="chip shrink-0 px-3 py-1 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-full text-xs font-semibold">&#128167; 인공눈물</button>
+    </div>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div class="flex-1 flex overflow-hidden relative">
+
+  <!-- 지도 영역 -->
+  <div class="flex-1 relative">
+    <div id="map" class="w-full h-full"></div>
+
+    <!-- 초기 안내 -->
+    <div id="map-placeholder" class="absolute inset-0 bg-slate-50 flex flex-col items-center justify-center gap-4 p-6">
+      <div class="text-6xl">&#128138;</div>
+      <div class="text-center">
+        <div class="text-xl font-black text-slate-700 mb-2">찾는 약이 어느 약국에 있나요?</div>
+        <div class="text-sm text-slate-400">약품명 검색 → 재고 있는 약국을 지도에서 확인</div>
+      </div>
+      <div class="flex gap-3 flex-wrap justify-center mt-2">
+        <button onclick="quickSearch('오메가3')" class="px-5 py-2.5 bg-teal-500 text-white font-bold rounded-xl text-sm hover:bg-teal-400 transition-colors">오메가3 찾기</button>
+        <button onclick="quickSearch('타이레놀')" class="px-5 py-2.5 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl text-sm hover:border-teal-300 transition-colors">타이레놀 찾기</button>
+      </div>
+    </div>
+
+    <!-- 로딩 -->
+    <div id="map-loading" class="hidden absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+      <div class="text-center">
+        <div class="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <div class="text-sm text-slate-500 font-semibold" id="loading-text">검색 중...</div>
+      </div>
+    </div>
+
+    <!-- 결과 없음 -->
+    <div id="no-result" class="hidden absolute inset-0 bg-slate-50 flex flex-col items-center justify-center gap-3">
+      <div class="text-5xl">&#128533;</div>
+      <div class="text-center">
+        <div class="text-lg font-black text-slate-700 mb-1" id="no-result-kw"></div>
+        <div class="text-sm text-slate-400">오더팜에 등록된 약국 중 재고 있는 곳이 없어요</div>
+        <div class="text-xs text-slate-300 mt-1">더 많은 약국이 참여하면 검색 범위가 넓어져요</div>
+      </div>
+      <button onclick="document.getElementById('search-input').focus()"
+        class="px-5 py-2 bg-teal-500 text-white font-bold rounded-xl text-sm">다시 검색</button>
+    </div>
+
+    <!-- 결과 수 배지 -->
+    <div id="result-badge" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-10
+      bg-teal-500 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg whitespace-nowrap">
+      <span id="result-count">0</span>개 약국에 재고 있음
+    </div>
+  </div>
+
+  <!-- 우측 결과 패널 (데스크탑 sm 이상) -->
+  <div id="result-panel"
+    class="hidden sm:flex flex-col w-80 bg-white border-l border-slate-100 shadow-inner overflow-hidden shrink-0">
+    <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
+      <div class="font-bold text-slate-800 text-sm" id="panel-title">검색 결과</div>
+      <div class="text-xs text-slate-400 mt-0.5" id="panel-sub"></div>
+    </div>
+    <div id="result-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+  </div>
+
+  <!-- 하단 약국 상세 (모바일) -->
+  <div id="pin-detail" class="hidden absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-10 pin-info"
+    style="max-height:60vh;overflow-y:auto">
+    <div class="sticky top-0 bg-white px-5 pt-4 pb-2">
+      <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-3"></div>
+      <div class="flex items-center justify-between">
+        <div id="pin-pharmacy-name" class="font-black text-slate-800 text-base"></div>
+        <button onclick="document.getElementById('pin-detail').classList.add('hidden')"
+          class="text-slate-400 text-xl leading-none">&#10005;</button>
+      </div>
+      <div id="pin-address" class="text-xs text-slate-400 mt-0.5"></div>
+    </div>
+    <div id="pin-products" class="px-5 pb-5 space-y-2 mt-2"></div>
+    <div class="px-5 pb-5" id="pin-actions"></div>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let map = null, markers = [];
+let _searchTimer = null;
+const NAVER_READY = typeof naver !== 'undefined' && naver.maps;
+
+// 네이버 지도 초기화
+function initMap(lat=37.5665, lng=126.9780) {
+  if (!NAVER_READY) { showApiKeyGuide(); return; }
+  map = new naver.maps.Map('map', {
+    center: new naver.maps.LatLng(lat, lng),
+    zoom: 13,
+    mapTypeId: naver.maps.MapTypeId.NORMAL
+  });
+}
+
+function showApiKeyGuide() {
+  document.getElementById('map').innerHTML = `
+    <div class="flex flex-col items-center justify-center h-full gap-4 bg-slate-50 p-8 text-center">
+      <div class="text-5xl">&#128506;</div>
+      <div class="font-bold text-slate-700 text-lg mb-1">네이버 지도 API 키 필요</div>
+      <div class="text-sm text-slate-400 leading-relaxed">
+        네이버 클라우드 플랫폼에서 무료로 발급받고<br/>
+        find.html의 <code class="bg-slate-200 px-1 rounded">NAVER_CLIENT_ID</code>를 교체하세요
+      </div>
+      <a href="https://console.ncloud.com/naver-service/application" target="_blank"
+        class="px-5 py-3 bg-green-500 hover:bg-green-400 text-white font-bold rounded-xl text-sm transition-colors">
+        네이버 클라우드 콘솔 →
+      </a>
+      <div class="text-xs text-slate-300 mt-2">검색 기능은 지금도 동작합니다 ↑</div>
+    </div>`;
+  document.getElementById('map-placeholder').classList.add('hidden');
+}
+
+// 내 위치
+function locateMe() {
+  if (!navigator.geolocation) { alert('위치 정보를 지원하지 않는 브라우저입니다.'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    if (!map || !NAVER_READY) return;
+    const latlng = new naver.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+    map.setCenter(latlng); map.setZoom(14);
+    new naver.maps.Marker({
+      map, position: latlng,
+      icon: {
+        content: '<div style="width:14px;height:14px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(59,130,246,.5)"></div>',
+        anchor: new naver.maps.Point(7, 7)
+      }
+    });
+  }, () => alert('위치 정보를 가져올 수 없습니다.'));
+}
+
+// 자동완성 딜레이
+function onSearchInput() {
+  clearTimeout(_searchTimer);
+  const v = document.getElementById('search-input').value.trim();
+  if (v.length >= 2) _searchTimer = setTimeout(doSearch, 400);
+}
+function quickSearch(kw) {
+  document.getElementById('search-input').value = kw;
+  doSearch();
+}
+
+// 메인 검색
+async function doSearch() {
+  const kw = document.getElementById('search-input').value.trim();
+  if (!kw) return;
+  document.getElementById('map-placeholder').classList.add('hidden');
+  document.getElementById('no-result').classList.add('hidden');
+  document.getElementById('map-loading').classList.remove('hidden');
+  document.getElementById('loading-text').textContent = `"${kw}" 검색 중...`;
+  clearMarkers();
+
+  try {
+    const { data, error } = await sb.rpc('search_inventory', { keyword: kw });
+    document.getElementById('map-loading').classList.add('hidden');
+    if (error) throw error;
+    if (!data || !data.length) {
+      document.getElementById('no-result-kw').textContent = `"${kw}" 재고 있는 약국 없음`;
+      document.getElementById('no-result').classList.remove('hidden');
+      document.getElementById('result-badge').classList.add('hidden');
+      return;
+    }
+    renderResults(kw, groupByShop(data));
+  } catch(e) {
+    document.getElementById('map-loading').classList.add('hidden');
+    // 데모 데이터로 대체
+    renderResults(kw, getDemoData(kw), true);
+  }
+}
+
+function groupByShop(rows) {
+  const map_ = {};
+  rows.forEach(r => {
+    if (!map_[r.shop_id]) map_[r.shop_id] = { ...r, products: [] };
+    map_[r.shop_id].products.push(r);
+  });
+  return Object.values(map_);
+}
+
+function getDemoData(kw) {
+  return [
+    { shop_id:'demo1', pharmacy_name:'우리약국', address:'서울 강남구 테헤란로 123', lat:37.5012, lng:127.0396, phone_public:'02-1234-5678',
+      products:[{emoji:'💊',product_name:kw,tagline:'약사 추천 제품',price:6500},{emoji:'💊',product_name:kw+' 대용량',tagline:'2개월분',price:11000}]},
+    { shop_id:'demo2', pharmacy_name:'파랑새약국', address:'서울 강남구 역삼동 456', lat:37.5010, lng:127.0420, phone_public:'02-9876-5432',
+      products:[{emoji:'💊',product_name:kw,tagline:'재고 있음',price:null}]},
+    { shop_id:'demo3', pharmacy_name:'행복약국', address:'서울 강남구 삼성동 789', lat:37.5030, lng:127.0380, phone_public:'02-5555-6666',
+      products:[{emoji:'🌿',product_name:kw,tagline:'고함량',price:8900}]},
+  ];
+}
+
+// 결과 렌더링
+function renderResults(kw, pharmacies, isDemo=false) {
+  const cnt = pharmacies.length;
+  document.getElementById('result-count').textContent = cnt;
+  document.getElementById('result-badge').classList.remove('hidden');
+  document.getElementById('panel-title').textContent = `"${kw}" 검색 결과${isDemo?' (데모)':''}`;
+  document.getElementById('panel-sub').textContent = `${cnt}개 약국에 재고 있음`;
+  document.getElementById('result-panel').classList.remove('hidden');
+
+  const listEl = document.getElementById('result-list');
+  listEl.innerHTML = '';
+
+  const bounds = NAVER_READY ? new naver.maps.LatLngBounds() : null;
+
+  pharmacies.forEach((ph, i) => {
+    // 마커
+    if (NAVER_READY && ph.lat && ph.lng) {
+      addMarker(ph, i+1);
+      bounds.extend(new naver.maps.LatLng(ph.lat, ph.lng));
+    }
+    // 패널 카드
+    const card = document.createElement('div');
+    card.className = 'bg-white border border-slate-100 rounded-2xl p-4 cursor-pointer hover:border-teal-300 hover:shadow-md transition-all';
+    card.innerHTML = buildCard(ph, i+1);
+    card.onclick = () => focusPharmacy(ph);
+    listEl.appendChild(card);
+  });
+
+  if (NAVER_READY && bounds && !bounds.isEmpty()) {
+    map.fitBounds(bounds, { top:60, right:60, bottom:60, left:60 });
+  }
+}
+
+function buildCard(ph, num) {
+  const prods = ph.products.slice(0,3).map(p =>
+    `<span class="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-100 rounded-lg px-2 py-0.5 text-xs font-medium">
+      ${p.emoji||'💊'} ${p.product_name}
+      ${p.price ? `<b class="text-teal-600">${p.price.toLocaleString()}원</b>` : ''}
+    </span>`).join('');
+  const more = ph.products.length > 3 ? `<span class="text-xs text-slate-400">+${ph.products.length-3}개 더</span>` : '';
+  return `
+    <div class="flex items-start gap-3">
+      <div class="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center text-green-700 font-black text-sm shrink-0">${num}</div>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-slate-800 text-sm">${ph.pharmacy_name}</div>
+        <div class="text-xs text-slate-400 truncate mt-0.5">${ph.address||'주소 미등록'}</div>
+        ${ph.phone_public ? `<a href="tel:${ph.phone_public}" class="text-xs text-teal-600 font-semibold mt-1 block" onclick="event.stopPropagation()">&#128222; ${ph.phone_public}</a>` : ''}
+        <div class="flex flex-wrap gap-1 mt-2">${prods}${more}</div>
+      </div>
+      <button onclick="event.stopPropagation();naverMapOpen('${ph.pharmacy_name}',${ph.lat||37.5},${ph.lng||126.9})"
+        class="shrink-0 w-9 h-9 bg-green-500 hover:bg-green-400 rounded-xl flex items-center justify-center text-white text-sm font-bold transition-colors" title="네이버 지도에서 보기">
+        N
+      </button>
+    </div>`;
+}
+
+// 네이버 지도 앱/웹으로 열기
+function naverMapOpen(name, lat, lng) {
+  const url = `https://map.naver.com/v5/search/${encodeURIComponent(name)}?c=${lng},${lat},15,0,0,0,dh`;
+  window.open(url, '_blank');
+}
+
+// 마커 추가
+function addMarker(ph, num) {
+  if (!map || !NAVER_READY) return;
+  const pos = new naver.maps.LatLng(ph.lat, ph.lng);
+  const content = `
+    <div style="cursor:pointer;user-select:none" onclick="window._focusPharmacy_${ph.shop_id}()">
+      <div style="background:#00c73c;color:white;font-weight:900;font-size:12px;padding:6px 12px;
+        border-radius:20px;box-shadow:0 3px 10px rgba(0,199,60,.4);white-space:nowrap;
+        border:2px solid white">
+        ${num}. ${ph.pharmacy_name}
+      </div>
+      <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+        border-top:8px solid #00c73c;margin:0 auto"></div>
+    </div>`;
+  const marker = new naver.maps.Marker({ map, position: pos,
+    icon: { content, anchor: new naver.maps.Point(0, 40) }
+  });
+  markers.push(marker);
+  window[`_focusPharmacy_${ph.shop_id}`] = () => focusPharmacy(ph);
+}
+
+function clearMarkers() {
+  markers.forEach(m => m.setMap(null));
+  markers = [];
+}
+
+function focusPharmacy(ph) {
+  if (NAVER_READY && ph.lat && ph.lng) {
+    map.setCenter(new naver.maps.LatLng(ph.lat, ph.lng));
+    map.setZoom(15);
+  }
+  // 모바일 상세 패널
+  document.getElementById('pin-pharmacy-name').textContent = ph.pharmacy_name;
+  document.getElementById('pin-address').textContent = ph.address || '주소 미등록';
+  document.getElementById('pin-products').innerHTML = (ph.products||[]).map(p => `
+    <div class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+      <div class="text-2xl">${p.emoji||'💊'}</div>
+      <div class="flex-1">
+        <div class="font-bold text-sm text-slate-800">${p.product_name}</div>
+        <div class="text-xs text-slate-400">${p.tagline||''}</div>
+      </div>
+      ${p.price ? `<div class="text-green-600 font-black text-sm">${p.price.toLocaleString()}원</div>` : '<div class="text-xs text-slate-400">가격 문의</div>'}
+    </div>`).join('');
+  document.getElementById('pin-actions').innerHTML = `
+    <div class="flex gap-2 mt-3">
+      ${ph.phone_public ? `<a href="tel:${ph.phone_public}" class="flex-1 flex items-center justify-center gap-2 bg-teal-500 text-white font-bold rounded-xl py-3 text-sm">&#128222; 전화</a>` : ''}
+      <button onclick="naverMapOpen('${ph.pharmacy_name}',${ph.lat||37.5},${ph.lng||126.9})"
+        class="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-400 text-white font-bold rounded-xl py-3 text-sm transition-colors">
+        N 네이버 지도
+      </button>
+    </div>`;
+  document.getElementById('pin-detail').classList.remove('hidden');
+}
+
+// 초기화
+window.addEventListener('load', () => {
+  if (NAVER_READY) {
+    initMap();
+    document.getElementById('map-placeholder').classList.remove('hidden');
+  } else {
+    showApiKeyGuide();
+  }
+});
+</script>
+</body>
+</html>
