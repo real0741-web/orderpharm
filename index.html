@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
   * { font-family: 'Noto Sans KR', -apple-system, sans-serif; }
@@ -198,6 +199,31 @@
               <input id="r-birth" type="text" placeholder="생년월일 * (19800101)" maxlength="8" class="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-teal-500" />
             </div>
             <input id="r-phone" type="tel" placeholder="연락처 * (010-0000-0000)" oninput="fmtPhone(this)" class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-teal-500" />
+            <input id="r-fax" type="tel" placeholder="팩스번호 (선택)"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-teal-500" />
+            <div class="flex gap-2">
+              <input id="r-postal" type="text" placeholder="우편번호 *" readonly onclick="searchAddress()"
+                class="w-28 px-3 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 cursor-pointer"/>
+              <button type="button" onclick="searchAddress()"
+                class="px-3 py-2 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-xs font-bold rounded-xl border border-teal-500/30 whitespace-nowrap">
+                🔍 주소 검색
+              </button>
+            </div>
+            <input id="r-address" type="text" placeholder="도로명 주소 *" readonly onclick="searchAddress()"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 cursor-pointer"/>
+            <input id="r-address-detail" type="text" placeholder="상세주소 (동/호수 등, 선택)"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-teal-500" />
+            <div class="grid grid-cols-2 gap-2">
+              <div><p class="text-xs text-white/40 mb-1">영업 시작</p>
+                <input id="r-open" type="time" value="09:00"
+                  class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-teal-500"/></div>
+              <div><p class="text-xs text-white/40 mb-1">영업 종료</p>
+                <input id="r-close" type="time" value="18:00"
+                  class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-teal-500"/></div>
+            </div>
+            <textarea id="r-desc" rows="2"
+              placeholder="약국 소개 (선택) — 예: 이비인후과 처방조제 전문, 시장 앞 상비약 전문"
+              class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-teal-500 resize-none"></textarea>
           </div>
         </div>
         <div id="r-error" class="text-red-400 text-xs hidden"></div>
@@ -326,6 +352,19 @@ function fmtPhone(el) {
 }
 
 /* ── 로그인 ── */
+
+function searchAddress() {
+  if (typeof daum === 'undefined') { alert('주소 검색 서비스 로딩 중입니다. 잠시 후 다시 시도해주세요.'); return; }
+  new daum.Postcode({
+    oncomplete: function(data) {
+      document.getElementById('r-postal').value = data.zonecode;
+      document.getElementById('r-address').value = data.roadAddress || data.jibunAddress;
+      const detail = document.getElementById('r-address-detail');
+      if (detail) detail.focus();
+    }
+  }).open();
+}
+
 async function doLogin() {
   const email=document.getElementById('l-email').value.trim(), pw=document.getElementById('l-pw').value;
   const errEl=document.getElementById('l-error'); errEl.classList.add('hidden');
