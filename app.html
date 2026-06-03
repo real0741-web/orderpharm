@@ -5170,17 +5170,19 @@ async function _applyRemoteData(showToastMsg, bgMode = false) {
   const loadingEl = document.getElementById('init-loading-screen');
   function hideLoading() { if (loadingEl) loadingEl.style.display = 'none'; }
 
-  // 로그인된 약국 관리자면 shop_id 동기화
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    const { data: profile } = await sb.from('profiles')
-      .select('shop_id,pharmacy_name,status').eq('id', session.user.id).single();
-    if (profile?.status === 'approved' && profile?.shop_id) {
-      window._DYNAMIC_SHOP_ID = profile.shop_id;
-      const nameEl = document.getElementById('header-name');
-      if (nameEl) nameEl.textContent = profile.pharmacy_name;
+  // 로그인된 약국 관리자면 shop_id 동기화 (실패해도 키오스크는 정상 동작)
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      const { data: profile } = await sb.from('profiles')
+        .select('shop_id,pharmacy_name,status').eq('id', session.user.id).single();
+      if (profile?.status === 'approved' && profile?.shop_id) {
+        window._DYNAMIC_SHOP_ID = profile.shop_id;
+        const nameEl = document.getElementById('header-name');
+        if (nameEl) nameEl.textContent = profile.pharmacy_name;
+      }
     }
-  }
+  } catch(_) { /* Supabase 오류 무시 — 키오스크 계속 동작 */ }
 
   // localStorage 캐시 있으면 즉시 렌더
   const shopKey = STORAGE_KEY + '_' + getShopId();
