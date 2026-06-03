@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>오더팜 전체관리자</title>
+<meta name="theme-color" content="#0f172a"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+  * { font-family: 'Noto Sans KR', -apple-system, sans-serif; box-sizing: border-box; }
+</style>
+</head>
+<body class="bg-slate-950 min-h-screen text-white">
+
+<!-- 로그인 화면 -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 rounded-2xl bg-red-500 flex items-center justify-center font-black text-2xl mx-auto mb-4">&#8478;</div>
+      <div class="text-2xl font-black text-white">오더팜 관리자</div>
+      <div class="text-red-400 text-sm mt-1">전체 관리자 전용</div>
+    </div>
+    <div class="bg-slate-900 border border-white/10 rounded-2xl p-6 space-y-3">
+      <input id="a-email" type="email" placeholder="관리자 이메일"
+        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-red-400"/>
+      <input id="a-pw" type="password" placeholder="비밀번호"
+        class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-red-400"/>
+      <div id="a-err" class="text-red-400 text-xs hidden"></div>
+      <button onclick="adminLogin()"
+        class="w-full py-3 bg-red-500 hover:bg-red-400 text-white font-black rounded-xl transition-colors">
+        관리자 로그인
+      </button>
+    </div>
+    <div class="text-center mt-4">
+      <a href="./index.html" class="text-white/30 text-xs hover:text-white/50">← 오더팜 홈으로</a>
+    </div>
+  </div>
+</div>
+
+<!-- 관리자 대시보드 -->
+<div id="dashboard" class="hidden min-h-screen">
+
+  <!-- 헤더 -->
+  <header class="bg-slate-900 border-b border-white/10 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-red-500 flex items-center justify-center font-black text-sm">&#8478;</div>
+        <span class="font-black text-white">오더팜</span>
+        <span class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-0.5 rounded-full">전체관리자</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="admin-email-label" class="text-white/40 text-xs hidden sm:block"></span>
+        <button onclick="adminLogout()" class="text-white/40 hover:text-white text-sm transition-colors">로그아웃</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 탭 -->
+  <div class="bg-slate-900 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto py-2">
+      <button onclick="showTab('pending')" id="tab-pending"
+        class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold bg-amber-500 text-white">
+        ⏳ 가입 대기
+        <span id="pending-badge" class="ml-1 bg-white/20 px-1.5 rounded-full text-xs">0</span>
+      </button>
+      <button onclick="showTab('approved')" id="tab-approved"
+        class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold text-white/50 hover:bg-white/10">
+        ✅ 승인된 약국
+      </button>
+      <button onclick="showTab('rejected')" id="tab-rejected"
+        class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold text-white/50 hover:bg-white/10">
+        ❌ 거절됨
+      </button>
+      <button onclick="showTab('all')" id="tab-all"
+        class="shrink-0 px-4 py-2 rounded-lg text-sm font-bold text-white/50 hover:bg-white/10">
+        &#128203; 전체
+      </button>
+    </div>
+  </div>
+
+  <!-- 콘텐츠 -->
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- 통계 카드 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div class="bg-slate-900 border border-white/10 rounded-2xl p-4">
+        <div class="text-white/40 text-xs mb-1">전체 신청</div>
+        <div class="text-2xl font-black text-white" id="stat-total">-</div>
+      </div>
+      <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
+        <div class="text-amber-400 text-xs mb-1">⏳ 대기 중</div>
+        <div class="text-2xl font-black text-amber-400" id="stat-pending">-</div>
+      </div>
+      <div class="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-4">
+        <div class="text-teal-400 text-xs mb-1">✅ 운영 중</div>
+        <div class="text-2xl font-black text-teal-400" id="stat-approved">-</div>
+      </div>
+      <div class="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+        <div class="text-red-400 text-xs mb-1">❌ 거절</div>
+        <div class="text-2xl font-black text-red-400" id="stat-rejected">-</div>
+      </div>
+    </div>
+
+    <!-- 약국 목록 -->
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-black text-white text-lg" id="list-title">가입 대기 목록</h2>
+      <button onclick="loadMembers()" class="text-white/40 hover:text-white text-sm transition-colors">&#8635; 새로고침</button>
+    </div>
+    <div id="member-list" class="space-y-3">
+      <div class="text-center text-white/30 py-12">불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 약국 상세 모달 -->
+<div id="detail-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-lg p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-black text-white text-lg" id="modal-title">약국 정보</h3>
+      <button onclick="closeModal()" class="text-white/40 hover:text-white text-2xl leading-none">&#10005;</button>
+    </div>
+    <div id="modal-content" class="space-y-3 mb-5"></div>
+    <div id="modal-actions" class="flex gap-2 flex-wrap"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// 슈퍼어드민 이메일 (본인만 접근 가능)
+const SUPER_ADMIN_EMAIL = 'aispeed0324@gmail.com';
+
+let currentTab = 'pending';
+let allMembers = [];
+
+// ── 로그인 ──────────────────────────────────────────────────
+async function adminLogin() {
+  const email = document.getElementById('a-email').value.trim();
+  const pw    = document.getElementById('a-pw').value;
+  const err   = document.getElementById('a-err');
+  err.classList.add('hidden');
+
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if (error) { err.textContent = '이메일 또는 비밀번호가 틀렸습니다.'; err.classList.remove('hidden'); return; }
+
+  // 슈퍼어드민 확인
+  const { data: { user } } = await sb.auth.getUser();
+  if (user.email !== SUPER_ADMIN_EMAIL) {
+    await sb.auth.signOut();
+    err.textContent = '전체 관리자 권한이 없습니다.';
+    err.classList.remove('hidden');
+    return;
+  }
+
+  showDashboard(user);
+}
+
+async function adminLogout() {
+  await sb.auth.signOut();
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+// ── 대시보드 표시 ─────────────────────────────────────────
+function showDashboard(user) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('admin-email-label').textContent = user.email;
+  loadMembers();
+}
+
+// ── 회원 목록 로드 ────────────────────────────────────────
+async function loadMembers() {
+  const { data, error } = await sb.from('profiles')
+    .select('*').order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+
+  allMembers = data || [];
+
+  // 통계
+  document.getElementById('stat-total').textContent = allMembers.length;
+  document.getElementById('stat-pending').textContent  = allMembers.filter(m=>m.status==='pending').length;
+  document.getElementById('stat-approved').textContent = allMembers.filter(m=>m.status==='approved').length;
+  document.getElementById('stat-rejected').textContent = allMembers.filter(m=>m.status==='rejected').length;
+  document.getElementById('pending-badge').textContent = allMembers.filter(m=>m.status==='pending').length;
+
+  renderList();
+}
+
+function showTab(tab) {
+  currentTab = tab;
+  ['pending','approved','rejected','all'].forEach(t => {
+    const btn = document.getElementById('tab-'+t);
+    if (t === tab) {
+      btn.className = 'shrink-0 px-4 py-2 rounded-lg text-sm font-bold ' +
+        (t==='pending' ? 'bg-amber-500 text-white' :
+         t==='approved'? 'bg-teal-500 text-white' :
+         t==='rejected'? 'bg-red-500 text-white' : 'bg-white/20 text-white');
+    } else {
+      btn.className = 'shrink-0 px-4 py-2 rounded-lg text-sm font-bold text-white/50 hover:bg-white/10';
+    }
+  });
+  renderList();
+}
+
+function renderList() {
+  const titles = { pending:'가입 대기 목록', approved:'승인된 약국', rejected:'거절 목록', all:'전체 목록' };
+  document.getElementById('list-title').textContent = titles[currentTab];
+
+  const list = currentTab === 'all' ? allMembers : allMembers.filter(m=>m.status===currentTab);
+  const el = document.getElementById('member-list');
+
+  if (!list.length) {
+    el.innerHTML = '<div class="text-center text-white/30 py-12">목록이 없습니다</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(m => `
+    <div class="bg-slate-900 border border-white/10 rounded-2xl p-4 cursor-pointer hover:border-white/20 transition-all"
+      onclick="openDetail('${m.id}')">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <div class="w-10 h-10 rounded-xl ${
+            m.status==='approved' ? 'bg-teal-500' :
+            m.status==='pending'  ? 'bg-amber-500' : 'bg-red-500/50'
+          } flex items-center justify-center font-black text-sm shrink-0">
+            ${m.status==='approved'?'✅':m.status==='pending'?'⏳':'❌'}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-white">${m.pharmacy_name}</div>
+            <div class="text-xs text-white/40">${m.email}</div>
+            <div class="text-xs text-white/30 mt-0.5">${m.owner_name} · ${m.business_number||'-'}</div>
+          </div>
+        </div>
+        <div class="shrink-0 text-right">
+          ${m.shop_id ? `<div class="text-xs font-mono text-teal-400">${m.shop_id}</div>` : ''}
+          <div class="text-xs text-white/30 mt-1">${new Date(m.created_at).toLocaleDateString('ko-KR')}</div>
+        </div>
+      </div>
+      ${m.status==='pending' ? `
+        <div class="flex gap-2 mt-3" onclick="event.stopPropagation()">
+          <button onclick="approve('${m.id}','${m.business_number}','${m.pharmacy_name}')"
+            class="flex-1 py-2 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl text-sm transition-colors">
+            ✅ 승인
+          </button>
+          <button onclick="reject('${m.id}')"
+            class="flex-1 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl text-sm transition-colors">
+            ❌ 거절
+          </button>
+        </div>` : ''}
+    </div>`).join('');
+}
+
+// ── 승인 ──────────────────────────────────────────────────
+async function approve(id, bizNum, name) {
+  if (!confirm(`"${name}" 약국을 승인하시겠어요?`)) return;
+  const shopId = 'shop_' + (bizNum||'').replace(/-/g,'');
+  const { error } = await sb.from('profiles').update({
+    status: 'approved', shop_id: shopId, approved_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) { alert('승인 실패: '+error.message); return; }
+  showToast(`✅ "${name}" 승인 완료! (${shopId})`);
+  loadMembers();
+  closeModal();
+}
+
+// ── 거절 ──────────────────────────────────────────────────
+async function reject(id) {
+  const reason = prompt('거절 사유를 입력하세요:');
+  if (reason === null) return;
+  const { error } = await sb.from('profiles').update({
+    status: 'rejected',
+    rejection_reason: reason || '관리자 검토 결과 승인이 어렵습니다.'
+  }).eq('id', id);
+  if (error) { alert('거절 처리 실패: '+error.message); return; }
+  showToast('거절 처리 완료');
+  loadMembers();
+  closeModal();
+}
+
+// ── 정지/복구 ──────────────────────────────────────────────
+async function suspend(id, name) {
+  if (!confirm(`"${name}" 약국을 정지하시겠어요?`)) return;
+  await sb.from('profiles').update({ status:'suspended' }).eq('id',id);
+  showToast('정지 처리 완료');
+  loadMembers(); closeModal();
+}
+async function restore(id, bizNum, name) {
+  if (!confirm(`"${name}" 약국을 복구하시겠어요?`)) return;
+  const shopId = 'shop_' + (bizNum||'').replace(/-/g,'');
+  await sb.from('profiles').update({
+    status:'approved', shop_id: shopId, approved_at: new Date().toISOString()
+  }).eq('id',id);
+  showToast('복구 완료');
+  loadMembers(); closeModal();
+}
+
+// ── 상세 모달 ──────────────────────────────────────────────
+function openDetail(id) {
+  const m = allMembers.find(x=>x.id===id);
+  if (!m) return;
+  document.getElementById('modal-title').textContent = m.pharmacy_name;
+  document.getElementById('modal-content').innerHTML = `
+    <div class="grid grid-cols-2 gap-3">
+      <div class="bg-white/5 rounded-xl p-3">
+        <div class="text-white/40 text-xs mb-1">상태</div>
+        <div class="font-bold text-sm ${m.status==='approved'?'text-teal-400':m.status==='pending'?'text-amber-400':'text-red-400'}">
+          ${m.status==='approved'?'✅ 승인':m.status==='pending'?'⏳ 대기':m.status==='rejected'?'❌ 거절':'⛔ 정지'}
+        </div>
+      </div>
+      <div class="bg-white/5 rounded-xl p-3">
+        <div class="text-white/40 text-xs mb-1">Shop ID</div>
+        <div class="font-mono text-teal-400 text-sm">${m.shop_id||'미발급'}</div>
+      </div>
+    </div>
+    <div class="bg-white/5 rounded-xl p-4 space-y-2 text-sm">
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">이메일</span><span class="text-white">${m.email}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">상호명</span><span class="text-white font-bold">${m.pharmacy_name}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">사업자번호</span><span class="text-white">${m.business_number||'-'}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">대표자</span><span class="text-white">${m.owner_name||'-'}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">생년월일</span><span class="text-white">${m.owner_birth||'-'}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">연락처</span><span class="text-white">${m.phone||'-'}</span></div>
+      <div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">신청일</span><span class="text-white">${new Date(m.created_at).toLocaleString('ko-KR')}</span></div>
+      ${m.approved_at?`<div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">승인일</span><span class="text-teal-400">${new Date(m.approved_at).toLocaleString('ko-KR')}</span></div>`:''}
+      ${m.rejection_reason?`<div class="flex gap-2"><span class="text-white/40 w-20 shrink-0">거절사유</span><span class="text-red-400">${m.rejection_reason}</span></div>`:''}
+    </div>`;
+
+  const actions = document.getElementById('modal-actions');
+  if (m.status==='pending') {
+    actions.innerHTML = `
+      <button onclick="approve('${m.id}','${m.business_number}','${m.pharmacy_name}')"
+        class="flex-1 py-3 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl transition-colors">✅ 승인</button>
+      <button onclick="reject('${m.id}')"
+        class="flex-1 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl transition-colors">❌ 거절</button>`;
+  } else if (m.status==='approved') {
+    actions.innerHTML = `
+      <button onclick="suspend('${m.id}','${m.pharmacy_name}')"
+        class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white/60 font-bold rounded-xl transition-colors">⛔ 정지</button>`;
+  } else {
+    actions.innerHTML = `
+      <button onclick="restore('${m.id}','${m.business_number}','${m.pharmacy_name}')"
+        class="flex-1 py-3 bg-teal-500/20 hover:bg-teal-500/30 text-teal-400 font-bold rounded-xl transition-colors">&#8635; 복구</button>`;
+  }
+  document.getElementById('detail-modal').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('detail-modal').classList.add('hidden'); }
+
+// ── 토스트 ────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold z-50';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── 자동 로그인 복구 ──────────────────────────────────────
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && session.user.email === SUPER_ADMIN_EMAIL) {
+    showDashboard(session.user);
+  }
+})();
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') closeModal();
+  if (e.key==='Enter' && !document.getElementById('login-screen').classList.contains('hidden')) adminLogin();
+});
+</script>
+</body>
+</html>
