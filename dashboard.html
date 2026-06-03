@@ -228,9 +228,7 @@ const WORKER = 'https://pharmacy-proxy.speed0324.workers.dev';
 // shop_id → 키오스크 URL 매핑
 function kioskUrl(shopId) {
   if (!shopId) return null;
-  if (shopId === 'shop1') return 'https://real0741-web.github.io/local-pharmacy/';
-  if (shopId === 'shop2') return 'https://real0741-web.github.io/local-pharmacy/shop2/';
-  return `https://real0741-web.github.io/local-pharmacy/?shopId=${shopId}`;
+  return `https://real0741-web.github.io/orderpharm/app.html?shop=${shopId}`;
 }
 
 let _profile = null;
