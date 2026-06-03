@@ -5196,7 +5196,7 @@ async function _applyRemoteData(showToastMsg, bgMode = false) {
         currentCat = data.categories[0]?.id || 'hot';
         applyHeader(); renderCategories(); renderProducts();
         renderSidebarBundleBtn(); updateCartUI();
-      } else if (session && !remote?.products?.length) {
+      } else if (!remote?.products?.length) {
         // 서버에 데이터 없음 = 신규 약국 → 시작 템플릿 안내
         hideLoading();
         _showStarterPrompt();
