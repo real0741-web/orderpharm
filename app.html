@@ -4006,6 +4006,11 @@ async function checkQRValidity() {
    ─────────────────────────────────────────────────────────────────── */
 /* Cloudflare Worker 프록시 — CORS 우회용 */
 const PROXY = 'https://pharmacy-proxy.speed0324.workers.dev';
+
+// Supabase - 공개 재고 동기화 + 약국 프로필 (initApp보다 먼저 선언 필요)
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const proxyFetch = (apiUrl, opts={}) =>
   fetch(`${PROXY}/?url=${encodeURIComponent(apiUrl)}`, opts);
 
@@ -5322,9 +5327,7 @@ if (sessionStorage.getItem('pharm_admin_session') === '1') {
 // ============================================================
 // 오더팜 Auth - Supabase 인증 + 회원 가입/승인
 // ============================================================
-const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
 
 let currentUser = null;
 let currentProfile = null;
