@@ -6,6 +6,7 @@
 <title>오더팜 관리자 대시보드</title>
 <meta name="theme-color" content="#0d9488"/>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=y7t7e0vvnk&submodules=geocoder"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
@@ -84,17 +85,45 @@
 
 <div class="max-w-3xl mx-auto px-4 py-6 space-y-5">
 
-  <!-- 키오스크 바로가기 -->
+  <!-- 내 약국 목록 (다점포) -->
   <div>
-    <div class="section-title">🖥️ 키오스크</div>
-    <button id="kiosk-btn" class="kiosk-btn" onclick="openKiosk()">
-      <div class="kiosk-icon">🏥</div>
-      <div>
-        <div class="font-black text-lg">키오스크 열기</div>
-        <div style="font-size:13px;opacity:.8;margin-top:2px" id="kiosk-url-label">우리약국 디지털 가이드</div>
+    <div class="flex items-center justify-between mb-4">
+      <div class="section-title mb-0">🏪 내 약국 목록</div>
+      <button onclick="openAddStoreModal()" class="btn-primary text-sm py-2 px-4">+ N호점 추가 신청</button>
+    </div>
+    <div id="stores-grid" class="space-y-3">
+      <div class="text-center py-6 text-slate-400 text-sm">로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- N호점 추가 신청 모달 -->
+  <div id="add-store-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="font-black text-lg text-slate-800 mb-1">🏪 N호점 추가 신청</div>
+      <div class="text-xs text-slate-400 mb-5">관리자 승인 후 새 호점 키오스크가 활성화됩니다</div>
+      <div class="mb-4">
+        <label class="field-label">약국 상호명 *</label>
+        <input id="new-store-name" class="field-input" type="text" placeholder="예: 파랑새약국 2호점"/>
       </div>
-      <div class="ml-auto text-2xl opacity-70">→</div>
-    </button>
+      <div class="mb-5">
+        <label class="field-label">초기 제품 구성</label>
+        <div class="space-y-2 text-sm">
+          <label class="flex items-center gap-2 cursor-pointer p-3 rounded-xl border border-slate-200 hover:bg-slate-50">
+            <input type="radio" name="init-type" value="empty" checked class="accent-teal-600"/>
+            <div><div class="font-semibold">기본 분류만 (빈 제품)</div><div class="text-xs text-slate-400">분류 항목만 세팅, 제품은 직접 등록</div></div>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer p-3 rounded-xl border border-slate-200 hover:bg-slate-50">
+            <input type="radio" name="init-type" value="copy" class="accent-teal-600"/>
+            <div><div class="font-semibold">1호점 제품 복사</div><div class="text-xs text-slate-400">현재 1호점의 모든 제품을 그대로 가져옴</div></div>
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="submitAddStore()" class="btn-primary flex-1">신청하기</button>
+        <button onclick="closeAddStoreModal()" class="btn-secondary px-5">취소</button>
+      </div>
+      <div id="add-store-error" class="hidden mt-3 text-xs text-red-500 font-semibold"></div>
+    </div>
   </div>
 
   <!-- 약국 정보 관리 -->
@@ -148,13 +177,11 @@
         <!-- 좌표 자동 찾기 버튼 -->
         <div class="sm:col-span-2">
           <button onclick="findCoords()" class="btn-secondary w-full text-sm py-2.5">
-            📍 주소로 좌표 자동 입력 (네이버 지도에서 찾기)
+            📍 주소로 좌표 자동 입력
           </button>
           <div id="coords-help" class="hidden mt-2 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
-            1. <a href="https://map.naver.com" target="_blank" class="text-teal-600 font-semibold">map.naver.com</a> 접속<br/>
-            2. 약국 주소 검색 → 해당 위치 클릭<br/>
-            3. URL에서 좌표 확인: <code>map.naver.com/p/.../@<b>경도,위도</b>...</code><br/>
-            4. 위도/경도 입력 후 저장
+            자동 입력 실패 시 <a href="https://map.naver.com" target="_blank" class="text-teal-600 font-semibold">map.naver.com</a>에서
+            약국 검색 → URL의 <code>@경도,위도</code> 부분을 직접 입력해주세요.
           </div>
         </div>
 
@@ -205,14 +232,19 @@
 const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const WORKER = 'https://pharmacy-proxy.speed0324.workers.dev';
 
-const KIOSK_MAP = {
-  shop1: 'https://real0741-web.github.io/local-pharmacy/',
-  shop2: 'https://real0741-web.github.io/local-pharmacy/?shopId=shop2',
-};
+// shop_id → 키오스크 URL 매핑
+function kioskUrl(shopId) {
+  if (!shopId) return null;
+  if (shopId === 'shop1') return 'https://real0741-web.github.io/local-pharmacy/';
+  if (shopId === 'shop2') return 'https://real0741-web.github.io/local-pharmacy/shop2/';
+  return `https://real0741-web.github.io/local-pharmacy/?shopId=${shopId}`;
+}
 
 let _profile = null;
 let _userId  = null;
+let _stores  = [];  // 추가 호점 목록
 
 // ── 초기화 ──
 window.addEventListener('load', async () => {
@@ -226,19 +258,11 @@ async function loadProfile() {
   const { data: p, error } = await sb.from('profiles')
     .select('*').eq('id', _userId).single();
   if (error || !p) { location.href = './index.html'; return; }
-  if (p.status !== 'approved') {
-    location.href = './index.html';
-    return;
-  }
+  if (p.status !== 'approved') { location.href = './index.html'; return; }
   _profile = p;
 
-  // 헤더
   document.getElementById('header-pharmacy').textContent = p.pharmacy_name || '';
   document.getElementById('header-status').classList.remove('hidden');
-
-  // 키오스크 버튼
-  const kioskUrl = KIOSK_MAP[p.shop_id] || ('./app.html?shop=' + p.shop_id);
-  document.getElementById('kiosk-url-label').textContent = kioskUrl.replace('https://', '');
 
   // 폼 채우기
   document.getElementById('f-name').value    = p.pharmacy_name  || '';
@@ -251,8 +275,96 @@ async function loadProfile() {
   document.getElementById('f-close').value   = p.close_time     || '18:00';
   document.getElementById('f-desc').value    = p.description    || '';
 
-  // 공개 재고 로드
+  await loadStores();
   loadInventory(p.shop_id);
+}
+
+// ── 다점포 목록 로드 ──
+async function loadStores() {
+  const { data: stores } = await sb.from('stores')
+    .select('*').eq('user_id', _userId).order('store_number');
+  _stores = stores || [];
+  renderStores();
+}
+
+function renderStores() {
+  const grid = document.getElementById('stores-grid');
+  if (!grid) return;
+
+  // 1호점 (profiles에서)
+  const mainStore = {
+    id: 'main',
+    store_name: _profile.pharmacy_name,
+    store_number: 1,
+    shop_id: _profile.shop_id,
+    status: 'approved',
+  };
+
+  const allStores = [mainStore, ..._stores];
+
+  grid.innerHTML = allStores.map(s => {
+    const url = kioskUrl(s.shop_id);
+    const statusBadge = s.status === 'approved'
+      ? '<span class="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✅ 운영중</span>'
+      : s.status === 'pending'
+      ? '<span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">⏳ 승인 대기</span>'
+      : '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">❌ 거절됨</span>';
+
+    const kioskBtn = (s.status === 'approved' && url)
+      ? `<button onclick="window.open('${url}','_blank')"
+           class="flex items-center gap-2 bg-teal-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-teal-700 transition-all">
+           🖥️ 키오스크 열기 →
+         </button>`
+      : `<div class="text-xs text-slate-400">${s.status === 'pending' ? '승인 후 활성화' : s.rejection_reason || ''}</div>`;
+
+    return `<div class="card flex items-center gap-4">
+      <div class="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center text-2xl shrink-0">🏪</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-black text-slate-800">${s.store_name}</span>
+          <span class="text-xs text-slate-400 font-semibold">${s.store_number}호점</span>
+          ${statusBadge}
+        </div>
+        ${s.shop_id ? `<div class="text-xs text-slate-400 mt-0.5 font-mono">${s.shop_id}</div>` : ''}
+      </div>
+      <div class="shrink-0">${kioskBtn}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── N호점 추가 신청 ──
+function openAddStoreModal() {
+  document.getElementById('add-store-modal').classList.remove('hidden');
+  document.getElementById('add-store-error').classList.add('hidden');
+  // 기본 이름 제안
+  const nextNum = _stores.length + 2;
+  document.getElementById('new-store-name').value = `${_profile.pharmacy_name.replace(/\s*\d+호점$/, '')} ${nextNum}호점`;
+}
+
+function closeAddStoreModal() {
+  document.getElementById('add-store-modal').classList.add('hidden');
+}
+
+async function submitAddStore() {
+  const name = document.getElementById('new-store-name').value.trim();
+  const errEl = document.getElementById('add-store-error');
+  if (!name) { errEl.textContent = '약국 상호명을 입력해주세요'; errEl.classList.remove('hidden'); return; }
+
+  const nextNum = _stores.length + 2;
+  errEl.classList.add('hidden');
+
+  const { error } = await sb.from('stores').insert({
+    user_id:      _userId,
+    store_name:   name,
+    store_number: nextNum,
+    status:       'pending',
+  });
+
+  if (error) { errEl.textContent = '신청 실패: ' + error.message; errEl.classList.remove('hidden'); return; }
+
+  showToast(`✅ ${nextNum}호점 추가 신청 완료! 관리자 승인 후 활성화됩니다.`);
+  closeAddStoreModal();
+  await loadStores();
 }
 
 async function saveProfile() {
@@ -327,8 +439,35 @@ function openKiosk() {
   window.open(url, '_blank');
 }
 
-function findCoords() {
-  document.getElementById('coords-help').classList.toggle('hidden');
+async function findCoords() {
+  const address = document.getElementById('f-address').value.trim();
+  if (!address) { showToast('주소를 먼저 입력해주세요'); return; }
+
+  const btn = document.querySelector('button[onclick="findCoords()"]');
+  const helpEl = document.getElementById('coords-help');
+  if (btn) { btn.textContent = '🔄 좌표 찾는 중...'; btn.disabled = true; }
+
+  // 네이버 지도 SDK Geocoding 사용
+  if (typeof naver !== 'undefined' && naver.maps && naver.maps.Service) {
+    naver.maps.Service.geocode({ query: address }, function(status, response) {
+      if (btn) { btn.textContent = '📍 주소로 좌표 자동 입력'; btn.disabled = false; }
+      if (status !== naver.maps.Service.Status.OK || !response.v2.addresses.length) {
+        showToast('❌ 주소를 찾을 수 없어요. 더 자세히 입력해보세요.');
+        if (helpEl) helpEl.classList.remove('hidden');
+        return;
+      }
+      const result = response.v2.addresses[0];
+      document.getElementById('f-lat').value = result.y;
+      document.getElementById('f-lng').value = result.x;
+      if (helpEl) helpEl.classList.add('hidden');
+      showToast('✅ 좌표 자동 입력 완료! 저장해주세요.');
+    });
+  } else {
+    // Naver Maps 로드 전 폴백: Worker 경유 geocoding
+    if (btn) { btn.textContent = '📍 주소로 좌표 자동 입력'; btn.disabled = false; }
+    if (helpEl) helpEl.classList.remove('hidden');
+    showToast('⏳ 잠시 후 다시 시도해주세요 (지도 API 로딩 중)');
+  }
 }
 
 async function doLogout() {
